@@ -1,5 +1,5 @@
-#![feature(array_chunks)]
-use std::{cell::RefCell, collections::HashMap, ops::Range};
+#![feature(slice_take)]
+use std::{borrow::BorrowMut, cell::RefCell, collections::HashMap, ops::Range};
 
 use sha2::{Digest, Sha256};
 
@@ -11,7 +11,7 @@ pub type Hasher = Sha256;
 pub const LEAF_DOMAIN_SEPARATOR: [u8; 1] = [0u8];
 pub const INTERNAL_NODE_DOMAIN_SEPARATOR: [u8; 1] = [1u8];
 
-#[derive(Debug, PartialEq, PartialOrd, Eq, Ord, Copy, Clone)]
+#[derive(Debug, PartialEq, PartialOrd, Eq, Ord, Copy, Clone, Hash)]
 pub struct NamespaceId(pub [u8; NAMESPACE_ID_LEN]);
 
 impl AsRef<[u8]> for NamespaceId {
@@ -20,7 +20,7 @@ impl AsRef<[u8]> for NamespaceId {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Eq, Hash)]
 pub struct NamespacedHash(pub [u8; NAMESPACED_HASH_LEN]);
 
 impl NamespacedHash {
@@ -68,23 +68,60 @@ impl AsRef<[u8]> for NamespacedHash {
     }
 }
 
+#[derive(Default)]
+pub struct MemDb(HashMap<NamespacedHash, Node>);
+
+impl PreimageReader for MemDb {
+    fn get(&self, image: &NamespacedHash) -> Option<&Node> {
+        self.0.get(image)
+    }
+}
+impl PreimageWriter for MemDb {
+    fn put(&mut self, image: NamespacedHash, preimage: Node) {
+        self.0.insert(image, preimage);
+    }
+}
+
+impl PreimageDb for MemDb {}
+
+#[derive(Clone)]
 pub struct LeafWithHash {
     data: Vec<u8>,
     pub hash: NamespacedHash,
 }
 
-pub struct NamespaceMerkleTree {
+#[derive(PartialEq, Clone, Debug)]
+pub enum Node {
+    Leaf(Vec<u8>),
+    Inner(NamespacedHash, NamespacedHash),
+}
+
+pub trait PreimageReader {
+    fn get(&self, image: &NamespacedHash) -> Option<&Node>;
+}
+
+pub trait PreimageWriter {
+    fn put(&mut self, image: NamespacedHash, preimage: Node);
+}
+
+pub trait PreimageDb: PreimageReader + PreimageWriter + Default {}
+
+pub struct NamespaceMerkleTree<Db> {
     leaves: Vec<LeafWithHash>,
+    db: Db,
     ignore_max_ns: bool,
     precomputed_max_ns: NamespaceId,
     min_namespace: NamespaceId,
     max_namespace: NamespaceId,
     namespace_ranges: HashMap<NamespaceId, Range<usize>>,
-    root: RefCell<Option<NamespacedHash>>,
+    root: Option<NamespacedHash>,
     visitor: Box<dyn Fn(&NamespacedHash)>,
 }
 
-impl NamespaceMerkleTree {
+impl<Db> NamespaceMerkleTree<Db>
+where
+    Db: PreimageDb,
+{
     pub fn new() -> Self {
         Self {
             leaves: vec![],
@@ -97,8 +134,30 @@ impl NamespaceMerkleTree {
             // x >= tree.max_namespace is always true for the empty tree
             max_namespace: NamespaceId([0x00; NAMESPACE_ID_LEN]),
             namespace_ranges: Default::default(),
-            root: RefCell::new(Some(NamespacedHash::empty())),
+            db: Default::default(),
+            root: Some(NamespacedHash::empty()),
             visitor: Box::new(|_| {}),
+        }
+    }
+
+    pub fn push_leaf(&mut self, raw_data: &[u8], namespace: NamespaceId) {
+        self.root = None;
+        assert!(namespace >= self.max_namespace);
+        self.update_min_max_ids(namespace);
+
+        let hash = NamespacedHash::hash_leaf(raw_data, namespace);
+        let leaf = LeafWithHash {
+            hash,
+            data: raw_data.to_vec(),
+        };
+        self.leaves.push(leaf);
+        match self.namespace_ranges.entry(namespace) {
+            std::collections::hash_map::Entry::Occupied(entry) => {
+                entry.into_mut().end = self.leaves.len();
+            }
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(self.leaves.len() - 1..self.leaves.len());
+            }
         }
     }
 
@@ -134,41 +193,217 @@ impl NamespaceMerkleTree {
         output
     }
 
-    pub fn root(&self) -> NamespacedHash {
-        self.root
-            .borrow_mut()
-            .get_or_insert_with(|| self.compute_root(&self.leaves[..]))
-            .clone()
+    pub fn root(&mut self) -> NamespacedHash {
+        if let Some(inner) = &self.root {
+            return inner.clone();
+        }
+        let inner = self.compute_root(0..self.leaves.len());
+        self.root = Some(inner.clone());
+        inner
     }
 
-    pub fn compute_root(&self, leaves: &[LeafWithHash]) -> NamespacedHash {
-        match leaves.len() {
+    pub fn compute_root(&mut self, leaf_range: Range<usize>) -> NamespacedHash {
+        match leaf_range.len() {
             0 => {
                 let root = NamespacedHash::empty();
                 (self.visitor)(&root);
                 root
             }
             1 => {
-                let root = leaves[0].hash.clone();
+                let leaf_with_hash = &self.leaves[leaf_range.start];
+                let root = leaf_with_hash.hash.clone();
                 (self.visitor)(&root);
+                self.db
+                    .put(root.clone(), Node::Leaf(leaf_with_hash.data.clone()));
                 root
             }
             _ => {
-                let split_point = next_smaller_po2(leaves.len());
-                let left = self.compute_root(&leaves[..split_point]);
-                let right = self.compute_root(&leaves[split_point..]);
-                let root = self.hash_nodes(left, right);
+                let split_point = next_smaller_po2(leaf_range.len()) + leaf_range.start;
+                let left = self.compute_root(leaf_range.start..split_point);
+                let right = self.compute_root(split_point..leaf_range.end);
+                let root = self.hash_nodes(left.clone(), right.clone());
+                println!("Inserting root: {:?}", &root);
                 (self.visitor)(&root);
+                self.db.put(root.clone(), Node::Inner(left, right));
                 root
             }
         }
     }
 
-    fn build_range_proof(&self, leaves: &[LeafWithHash]) -> Vec<NamespacedHash> {
-        if leaves.len() == 1 {
-            let hash = leaves[0].hash.clone();
+    fn build_range_proof_inner(
+        &self,
+        range_to_prove: Range<usize>,
+        // remaining_leaves: Range<usize>,
+        subtrie_root: NamespacedHash,
+        subtrie_range: Range<usize>,
+        mut out: &mut Vec<NamespacedHash>,
+    ) {
+        dbg!(&subtrie_root);
+        if let Some(inner_node) = self.db.get(&subtrie_root) {
+            match inner_node {
+                // If we've bottomed out, return the leaf hash
+                Node::Leaf(_) => {
+                    if !range_to_prove.contains(&subtrie_range.start) {
+                        out.push(subtrie_root.clone())
+                    }
+                }
+                // Node::Leaf(_) => return out.push(subtrie_root.clone()),
+                // Otherwise
+                Node::Inner(l, r) => {
+                    let split_point = next_smaller_po2(subtrie_range.len()) + subtrie_range.start;
+                    // If the range to prove, doesn't overlap with the left subtrie, add the left subtrie root to the proof.
+                    // We're now done with the left subtrie
+                    if range_to_prove.start >= split_point {
+                        out.push(l.clone())
+                    //  If the range of nodes to prove completely contains the left subtrie, then we don't need to recurse.
+                    } else if range_to_prove.start > subtrie_range.start
+                        || range_to_prove.end < split_point
+                    {
+                        self.build_range_proof_inner(
+                            range_to_prove.clone(),
+                            l.clone(),
+                            subtrie_range.start..split_point,
+                            &mut out,
+                        );
+                    }
+
+                    // Similarly, if the range to prove, doesn't overlap with the right subtrie, add the right subtrie root to the proof and return
+                    if range_to_prove.end < split_point {
+                        out.push(r.clone())
+                    } else if range_to_prove.start > split_point
+                        || range_to_prove.end < subtrie_range.end
+                    {
+                        self.build_range_proof_inner(
+                            range_to_prove,
+                            r.clone(),
+                            split_point..subtrie_range.end,
+                            &mut out,
+                        );
+                    }
+                }
+            }
+        } else {
+            assert_eq!(&subtrie_root, &NamespacedHash::empty());
+            return out.push(subtrie_root);
         }
-        todo!()
+    }
+
+    pub fn check_range_proof_inner(
+        &self,
+        root: &NamespacedHash,
+        leaves: &mut &[LeafWithHash],
+        mut proof: &mut Vec<NamespacedHash>,
+        leaves_start_idx: usize,
+        subtrie_size: usize,
+        offset: usize,
+    ) -> Result<NamespacedHash, RangeProofError> {
+        let split_point = next_smaller_po2(subtrie_size);
+
+        let leaves_end_idx = leaves.len() + leaves_start_idx;
+        println!("Checking range proof for leaves {} to {}. Trie size: {}. Current offset: {}. Split point {}.", leaves_start_idx, leaves_end_idx, subtrie_size, offset, split_point);
+        // If there's a node in the right subtree
+        let right = if leaves_end_idx >= (split_point + offset) {
+            let right_subtrie_size = subtrie_size - split_point;
+            if right_subtrie_size == 1 {
+                leaves
+                    .take_last()
+                    .ok_or(RangeProofError::MissingLeaf)?
+                    .hash
+                    .clone()
+            } else {
+                // Recurse right
+                self.check_range_proof_inner(
+                    root,
+                    leaves,
+                    &mut proof,
+                    leaves_start_idx,
+                    right_subtrie_size,
+                    offset + split_point,
+                )?
+            }
+        } else {
+            proof.pop().ok_or(RangeProofError::MissingProofNode)?
+        };
+
+        let left = if leaves_start_idx < (split_point + offset) {
+            let left_subtrie_size = split_point;
+            if left_subtrie_size == 1 {
+                leaves
+                    .take_last()
+                    .ok_or(RangeProofError::MissingLeaf)?
+                    .hash
+                    .clone()
+            } else {
+                // Recurse left
+                self.check_range_proof_inner(
+                    root,
+                    leaves,
+                    &mut proof,
+                    leaves_start_idx,
+                    left_subtrie_size,
+                    offset,
+                )?
+            }
+        } else {
+            proof.pop().ok_or(RangeProofError::MissingProofNode)?
+        };
+
+        Ok(self.hash_nodes(left, right))
+    }
+
+    pub fn check_range_proof(
+        &self,
+        root: NamespacedHash,
+        leaves: &[LeafWithHash],
+        proof: &mut Vec<NamespacedHash>,
+        leaves_start_idx: usize,
+    ) -> Result<(), RangeProofError> {
+        if root == NamespacedHash::empty() {
+            if leaves.len() == 0 && leaves_start_idx == 0 {
+                return Ok(());
+            }
+            return Err(RangeProofError::TreeDoesNotContainLeaf);
+        }
+
+        // if leaves_start_idx + leaves.len() > trie_size {
+        //     return Err(RangeProofError::TreeDoesNotContainLeaf);
+        // }
+        // Cannot range prove an empty range
+        if leaves.len() == 0 {
+            return Err(RangeProofError::NoLeavesProvided);
+        }
+
+        if leaves.len() == 1 {
+            if leaves[0].hash == root {
+                if leaves_start_idx == 0 {
+                    return Ok(());
+                }
+                return Err(RangeProofError::TreeDoesNotContainLeaf);
+            }
+            return Ok(());
+        }
+
+        let computed_root = self.check_range_proof_inner(
+            &root,
+            &mut &leaves[..],
+            proof,
+            leaves_start_idx,
+            leaves_start_idx + leaves.len(),
+            0,
+        )?;
+        if computed_root == root {
+            return Ok(());
+        }
+        Err(RangeProofError::InvalidRoot)
+    }
+
+    fn build_range_proof(&mut self, leaf_range: Range<usize>) -> Vec<NamespacedHash> {
+        // Calculate the root to ensure that the preimage db is populated
+        let root = self.root();
+        let mut proof = Vec::new();
+        // self.build_range_proof_inner(leaf_range, 0..self.leaves.len())
+        self.build_range_proof_inner(leaf_range, root, 0..self.leaves.len(), &mut proof);
+        proof
     }
 }
 
@@ -176,4 +411,53 @@ impl NamespaceMerkleTree {
 fn next_smaller_po2(int: usize) -> usize {
     // Calculate the first power of two which is greater than or equal to the argument, then divide by two.
     int.next_power_of_two() >> 1
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum RangeProofError {
+    NoLeavesProvided,
+    InvalidRoot,
+    MissingLeaf,
+    MissingProofNode,
+    TreeDoesNotContainLeaf,
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::PreimageDb;
+    use crate::{MemDb, NamespaceMerkleTree};
+
+    fn tree_with_n_leaves(n: usize) -> NamespaceMerkleTree<MemDb> {
+        let mut tree = NamespaceMerkleTree::<MemDb>::new();
+        for x in 0..n {
+            let namespace = crate::NamespaceId((x as u64).to_be_bytes());
+            tree.push_leaf(x.to_be_bytes().as_ref(), namespace)
+        }
+        tree
+    }
+
+    fn test_tree_with_n_leaves(n: usize) {
+        let mut tree = tree_with_n_leaves(n);
+
+        let root = tree.root();
+        // dbg!(&root);
+        let mut proof = tree.build_range_proof(0..tree.leaves.len());
+        dbg!(&proof);
+        let leaves = &mut &tree.leaves[..];
+        let res = tree.check_range_proof(root, leaves, &mut proof, 0);
+        dbg!(&res);
+        assert!(res.is_ok())
+    }
+    // #[test]
+    // fn test_two_leaves() {
+    //     test_tree_with_n_leaves(2);
+    // }
+
+    #[test]
+    fn test_x_leaves() {
+        for x in 0..20 {
+            println!("Testing {}", x);
+            test_tree_with_n_leaves(x)
+        }
+    }
 }
