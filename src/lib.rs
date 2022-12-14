@@ -20,6 +20,29 @@ impl AsRef<[u8]> for NamespaceId {
     }
 }
 
+#[derive(Debug, PartialEq, Copy, Clone)]
+pub struct InvalidNamespace;
+
+impl std::fmt::Display for InvalidNamespace {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("InvalidNamespace")
+    }
+}
+impl std::error::Error for InvalidNamespace {}
+
+impl TryFrom<&[u8]> for NamespaceId {
+    type Error = InvalidNamespace;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        if value.len() != NAMESPACE_ID_LEN {
+            return Err(InvalidNamespace);
+        }
+        let mut out = [0u8; NAMESPACE_ID_LEN];
+        out.copy_from_slice(value);
+        Ok(Self(out))
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Eq, Hash)]
 pub struct NamespacedHash(pub [u8; NAMESPACED_HASH_LEN]);
 
