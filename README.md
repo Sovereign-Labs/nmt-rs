@@ -14,6 +14,6 @@ This code has not been audited, and may contain critical vulnerabilities. Do not
 
 [x] Verify index-based range proofs
 
-[] Create namespace range proofs
+[x] Create namespace range proofs
 
-[] Verify namespace range proofs
+[x] Verify namespace range proofs
