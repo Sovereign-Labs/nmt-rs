@@ -361,6 +361,7 @@ where
         }
 
         // Cannot range prove an empty range
+        // TODO: Consider making this succeed? since, technically, all trees contain the set of leaves
         if leaves.len() <= 0 {
             return Err(RangeProofError::NoLeavesProvided);
         }
@@ -391,13 +392,17 @@ where
             let mut index_of_final_node = leaves_start_idx + leaves.len() - 1;
             let mut remaining_right_siblings = proof.len() - num_left_siblings;
             let mut mask = 1;
-            while remaining_right_siblings > 0 && index_of_final_node < u32::MAX as usize {
+            while remaining_right_siblings > 0 {
                 if index_of_final_node & mask == 0 {
                     index_of_final_node |= mask;
                     remaining_right_siblings -= 1;
                 }
                 mask <<= 1;
+                if index_of_final_node == u32::MAX as usize {
+                    return Err(RangeProofError::TreeTooLarge);
+                }
             }
+            // the size of the tree is the index of the last node plus one (since we use zero-based indexing)
             index_of_final_node + 1
         };
 
@@ -458,6 +463,7 @@ pub enum RangeProofError {
     MissingProofNode,
     TreeDoesNotContainLeaf,
     TreeIsEmpty,
+    TreeTooLarge,
 }
 
 #[cfg(test)]
