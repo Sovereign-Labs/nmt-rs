@@ -466,6 +466,24 @@ pub enum RangeProofError {
     TreeTooLarge,
 }
 
+impl std::fmt::Display for RangeProofError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RangeProofError::NoLeavesProvided => f.write_str("RangeProofError::NoLeavesProvided"),
+            RangeProofError::InvalidRoot => f.write_str("RangeProofError::InvalidRoot"),
+            RangeProofError::MissingLeaf => f.write_str("RangeProofError::MissingLeaf"),
+            RangeProofError::MissingProofNode => f.write_str("RangeProofError::MissingProofNode"),
+            RangeProofError::TreeDoesNotContainLeaf => {
+                f.write_str("RangeProofError::TreeDoesNotContainLeaf")
+            }
+            RangeProofError::TreeIsEmpty => f.write_str("RangeProofError::TreeIsEmpty"),
+            RangeProofError::TreeTooLarge => f.write_str("RangeProofError::TreeTooLarge"),
+        }
+    }
+}
+
+impl std::error::Error for RangeProofError {}
+
 #[cfg(test)]
 mod tests {
     use crate::{MemDb, NamespaceMerkleTree};
