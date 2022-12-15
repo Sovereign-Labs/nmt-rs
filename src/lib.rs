@@ -10,6 +10,10 @@ pub use namespaced_hash::*;
 pub mod db;
 
 #[derive(Debug, PartialEq, Clone)]
+/// A proof of some statement about a namespaced merkle tree.
+///
+/// This proof may prove the presence of some set of leaves, or the
+/// absence of a particular namespace
 pub enum Proof {
     AbsenceProof {
         siblings: Vec<NamespacedHash>,
@@ -25,6 +29,7 @@ pub enum Proof {
 }
 
 impl Proof {
+    /// Verify that the provided *raw* leaves occur in the provided namespace, using this proof
     pub fn verify(
         self,
         root: &NamespacedHash,
@@ -80,6 +85,7 @@ impl Proof {
     }
 }
 
+/// Compute the number of left siblings required for an inclusion proof of the node at the provided index
 fn compute_num_left_siblings(node_idx: usize) -> usize {
     // The number of left siblings needed is the same as the number of ones in the binary
     // decomposition of the start index
@@ -99,7 +105,6 @@ fn check_proof_completeness(
     leaves: &[NamespacedHash],
     proof: &Vec<NamespacedHash>,
     num_left_siblings: usize,
-    num_right_siblings: usize,
 ) -> RangeProofType {
     // Check if the proof is complete
     let mut proof_type = RangeProofType::Complete;
@@ -404,8 +409,7 @@ where
             .ok_or(RangeProofError::MissingProofNode)?;
 
         let tree_size = compute_tree_size(num_right_siblings, leaves_start_idx + leaves.len() - 1)?;
-        let proof_completeness =
-            check_proof_completeness(leaves, proof, num_left_siblings, num_right_siblings);
+        let proof_completeness = check_proof_completeness(leaves, proof, num_left_siblings);
 
         let computed_root =
             self.check_range_proof_inner(&mut &leaves[..], proof, leaves_start_idx, tree_size, 0)?;
@@ -620,7 +624,7 @@ mod tests {
     fn tree_with_n_leaves(n: usize) -> NamespaceMerkleTree<MemDb> {
         let mut tree = NamespaceMerkleTree::<MemDb>::new();
         for x in 0..n {
-            let namespace = crate::NamespaceId((x as u64).to_be_bytes());
+            let namespace = crate::NamespaceId(((x + 1) as u64).to_be_bytes());
             let _ = tree.push_leaf(x.to_be_bytes().as_ref(), namespace);
         }
         tree
@@ -662,6 +666,8 @@ mod tests {
         }
     }
 
+    // Try building and checking a proof of the min namespace, and the max namespace.
+    // Then, add a node to the max namespace and check the max again.
     fn test_min_and_max_ns_against(tree: &mut NamespaceMerkleTree<MemDb>) {
         let root = tree.root();
         let min_namespace = NamespaceId([0u8; NAMESPACE_ID_LEN]);
@@ -714,26 +720,43 @@ mod tests {
                 assert_eq!(result, Ok(RangeProofType::Partial))
             }
         }
+        for nid in 0..100u64 {
+            let namespace = NamespaceId(nid.to_be_bytes());
+            let (leaves, proof) = tree.get_namespace_with_proof(namespace);
+            println!("Poof: {:?}", &proof);
+
+            let pf = proof.verify(&root, &leaves, namespace);
+            if !pf.is_ok() {
+                dbg!(&pf, namespace);
+                println!("{:?}", &leaves);
+            }
+            assert!(pf.is_ok());
+        }
     }
     #[test]
     fn test_namespace_verification() {
         let mut tree = NamespaceMerkleTree::<MemDb>::new();
+        // Put a bunch of data in the tree
         for x in 0..33 {
-            let namespace = crate::NamespaceId((((x / 5 as u64) * 2) + 1).to_be_bytes());
+            // Ensure that some namespaces are skipped, including the zero namespace
+            let namespace = crate::NamespaceId((((x / 5 as u64) * 3) + 1).to_be_bytes());
             let _ = tree.push_leaf(x.to_be_bytes().as_ref(), namespace);
         }
         let root = tree.root();
         let leaves = tree.leaves.clone();
         let raw_leaves: Vec<&[u8]> = leaves.iter().map(|x| x.data.as_ref()).collect();
 
+        // Build proofs for each range that's actually included, and check that the range can be retrieved correctly
         for (namespace, range) in tree.namespace_ranges.clone().iter() {
             let proof = tree.build_range_proof(range.clone());
+            assert!(!range.is_empty());
 
             assert!(tree
-                .verify_namespace(&root, &raw_leaves[range.clone()], *namespace, proof,)
+                .verify_namespace(&root, &raw_leaves[range.clone()], *namespace, proof)
                 .is_ok());
         }
 
+        // Build and check proofs for a bunch of namespaces, including some that are present and some that are absent.
         for nid in 0..100u64 {
             let namespace = NamespaceId(nid.to_be_bytes());
             let (leaves, proof) = tree.get_namespace_with_proof(namespace);
@@ -749,9 +772,4 @@ mod tests {
 
         test_min_and_max_ns_against(&mut tree)
     }
-
-    // #[test]
-    // fn test_prove_min_and_max_ns() {
-    //     let tree = tree::new();
-    // }
 }
