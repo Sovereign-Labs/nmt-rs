@@ -11,12 +11,88 @@ pub type Hasher = Sha256;
 pub const LEAF_DOMAIN_SEPARATOR: [u8; 1] = [0u8];
 pub const INTERNAL_NODE_DOMAIN_SEPARATOR: [u8; 1] = [1u8];
 
+pub const EMPTY_ROOT: NamespacedHash = NamespacedHash([
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 227, 176, 196, 66, 152, 252, 28, 20, 154, 251,
+    244, 200, 153, 111, 185, 36, 39, 174, 65, 228, 100, 155, 147, 76, 164, 149, 153, 27, 120, 82,
+    184, 85,
+]);
+
 #[derive(Debug, PartialEq, PartialOrd, Eq, Ord, Copy, Clone, Hash)]
 pub struct NamespaceId(pub [u8; NAMESPACE_ID_LEN]);
 
 impl AsRef<[u8]> for NamespaceId {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
+    }
+}
+
+pub enum Proof {
+    AbsenceProof {
+        siblings: Vec<NamespacedHash>,
+        start_idx: u32,
+        ignore_max_ns: bool,
+        leaf: Option<NamespacedHash>,
+    },
+    PresenceProof {
+        siblings: Vec<NamespacedHash>,
+        start_idx: u32,
+        ignore_max_ns: bool,
+    },
+}
+
+impl Proof {
+    pub fn verify(
+        self,
+        root: &NamespacedHash,
+        raw_leaves: &[&[u8]],
+        namespace: NamespaceId,
+    ) -> Result<(), RangeProofError> {
+        let mut tree = NamespaceMerkleTree::<MemDb>::new();
+        tree.ignore_max_ns = self.ignores_max_ns();
+        tree.verify_namespace(root, raw_leaves, namespace, self)
+    }
+    fn convert_to_absence_proof(&mut self, leaf: NamespacedHash) {
+        match self {
+            Proof::AbsenceProof { .. } => {}
+            Proof::PresenceProof {
+                siblings,
+                start_idx,
+                ignore_max_ns,
+            } => {
+                let siblings = std::mem::take(siblings);
+                *self = Self::AbsenceProof {
+                    siblings,
+                    start_idx: *start_idx,
+                    ignore_max_ns: *ignore_max_ns,
+                    leaf: Some(leaf),
+                }
+            }
+        }
+    }
+
+    #[cfg(test)]
+    fn take_siblings(self) -> Vec<NamespacedHash> {
+        match self {
+            Proof::AbsenceProof { siblings, .. } => siblings,
+            Proof::PresenceProof { siblings, .. } => siblings,
+        }
+    }
+
+    fn ignores_max_ns(&self) -> bool {
+        match self {
+            Proof::AbsenceProof {
+                siblings: _,
+                start_idx: _,
+                ignore_max_ns,
+                ..
+            } => *ignore_max_ns,
+            Proof::PresenceProof {
+                siblings: _,
+                start_idx: _,
+                ignore_max_ns,
+                ..
+            } => *ignore_max_ns,
+        }
     }
 }
 
@@ -79,9 +155,16 @@ impl NamespacedHash {
     }
 
     pub fn empty() -> Self {
-        let mut out = Self([0u8; NAMESPACED_HASH_LEN]);
-        out.set_hash(Hasher::new().finalize().as_ref());
-        out
+        EMPTY_ROOT.clone()
+    }
+
+    pub fn contains(&self, namespace: NamespaceId) -> bool {
+        (self.min_namespace() <= namespace && self.max_namespace() >= namespace)
+            || self.is_empty_root()
+    }
+
+    pub fn is_empty_root(&self) -> bool {
+        self == &EMPTY_ROOT
     }
 }
 
@@ -158,7 +241,7 @@ where
             max_namespace: NamespaceId([0x00; NAMESPACE_ID_LEN]),
             namespace_ranges: Default::default(),
             db: Default::default(),
-            root: Some(NamespacedHash::empty()),
+            root: Some(EMPTY_ROOT.clone()),
             visitor: Box::new(|_| {}),
         }
     }
@@ -302,7 +385,7 @@ where
                 }
             }
         } else {
-            assert_eq!(&subtrie_root, &NamespacedHash::empty());
+            assert!(subtrie_root.is_empty_root());
             return out.push(subtrie_root);
         }
     }
@@ -376,27 +459,16 @@ where
         Ok(self.hash_nodes(left, right))
     }
 
-    /// Checks a given range proof. Returns a boolean
-    pub fn check_range_proof(
+    /// Checks a given range proof
+    fn check_range_proof(
         &self,
         root: &NamespacedHash,
         leaves: &[NamespacedHash],
         proof: &mut Vec<NamespacedHash>,
         leaves_start_idx: usize,
     ) -> Result<RangeProofType, RangeProofError> {
-        // // If the range is empty and the proof is empty, return Ok(()) for consistency with
-        // // https://github.com/celestiaorg/nmt/blob/95e8313eb788b46b30f3f85b20fd9a40bf68d432/proof.go#L107
-        // // TODO(@preston-evans98): this might be a vulnerability in Celestia's implementation. Syncing
-        // // with Ismail
-        // if leaves.len() == 0 {
-        //     return match proof.len() {
-        //         0 => Ok(()),
-        //         _ => Err(RangeProofError::NoLeavesProvided),
-        //     };
-        // }
-
         if root == &NamespacedHash::empty() {
-            if leaves.len() == 0 {
+            if leaves.len() == 0 && proof.len() == 0 {
                 return Ok(RangeProofType::Complete);
             } else {
                 return Err(RangeProofError::TreeIsEmpty);
@@ -506,22 +578,59 @@ where
     ///
     /// A range proof of build_range_proof(1..3) would return the vector [C, F], since those two hashes, together
     /// with the two leaves in the range, are sufficient to reconstruct the tree
-    pub fn build_range_proof(&mut self, leaf_range: Range<usize>) -> Vec<NamespacedHash> {
-        // A proof of an empty range is always empty
-        if leaf_range.len() == 0 {
-            return vec![];
-        }
+    fn build_range_proof(&mut self, leaf_range: Range<usize>) -> Proof {
         // Calculate the root to ensure that the preimage db is populated
         let root = self.root();
         let mut proof = Vec::new();
-        // self.build_range_proof_inner(leaf_range, 0..self.leaves.len())
+        let start_idx = leaf_range.start as u32;
         self.build_range_proof_inner(leaf_range, root, 0..self.leaves.len(), &mut proof);
+
+        Proof::PresenceProof {
+            siblings: proof,
+            start_idx,
+            ignore_max_ns: self.ignore_max_ns,
+        }
+    }
+
+    pub fn get_namespace_proof(&mut self, namespace: NamespaceId) -> Proof {
+        // If the namespace is outside the range covered by the root, we're done
+        if !self.root().contains(namespace) {
+            return Proof::AbsenceProof {
+                siblings: vec![],
+                start_idx: 0,
+                ignore_max_ns: self.ignore_max_ns,
+                leaf: None,
+            };
+        }
+
+        // If the namespace has data, just look up that namespace range and prove it by index
+        if let Some(leaf_range) = self.namespace_ranges.get(&namespace) {
+            return self.build_range_proof(leaf_range.clone());
+        }
+
+        // Otherwise, the namespace is within the range covered by the tree, but doesn't actually exist.
+        // To prove this, we can actually just prove that for some index `i`,
+        // leaves[i].namespace() < namespace < leaves[i+1].namespace(). Since a range proof for the range [i, i+1)
+        // Includes the namespaced hash of leaf i+1, proving this range is sufficient.
+        let namespace = self
+            .leaves
+            .binary_search_by(|l| l.hash.min_namespace().cmp(&namespace));
+
+        // The builtin binary search method returns the index where the item could be inserted while maintaining sorted order,
+        // which is the index after the leaf we want to prove
+        let following_idx =
+            namespace.expect_err("tree cannot contain leaf with namespace that does not exist");
+
+        let idx = following_idx - 1;
+
+        let mut proof = self.build_range_proof(idx..idx + 1);
+        proof.convert_to_absence_proof(self.leaves[idx].hash.clone());
         proof
     }
 
     /// Verifies that some set of leaves is a complete and correct representation of the data from a particular
     /// range of namespaces.
-    pub fn verify_namespace_leaf_hashes(
+    fn verify_leaf_hashes(
         &self,
         root: &NamespacedHash,
         leaf_hashes: &[NamespacedHash],
@@ -536,19 +645,83 @@ where
         }
     }
 
-    pub fn verify_namespace(
+    // /// Verifies that some set of leaves is a complete and correct representation of the data from a particular
+    // /// range of namespaces.
+    // pub fn verify_namespaced_leaf_hashes(
+    //     &self,
+    //     root: &NamespacedHash,
+    //     leaf_hashes: &[NamespacedHash],
+    //     mut proof: Vec<NamespacedHash>,
+    //     leaves_start_idx: usize,
+    // ) -> Result<(), RangeProofError> {
+    //     let proof_type =
+    //         self.check_range_proof(&root, leaf_hashes, &mut proof, leaves_start_idx)?;
+    //     match proof_type {
+    //         RangeProofType::Complete => Ok(()),
+    //         RangeProofType::Partial => Err(RangeProofError::MissingLeaf),
+    //     }
+    // }
+
+    fn verify_namespace(
         &self,
         root: &NamespacedHash,
         raw_leaves: &[&[u8]],
         namespace: NamespaceId,
-        proof: Vec<NamespacedHash>,
-        leaves_start_idx: usize,
+        proof: Proof,
     ) -> Result<(), RangeProofError> {
-        let leaf_hashes: Vec<NamespacedHash> = raw_leaves
-            .iter()
-            .map(|raw_data| NamespacedHash::hash_leaf(raw_data, namespace))
-            .collect();
-        self.verify_namespace_leaf_hashes(root, &leaf_hashes[..], proof, leaves_start_idx)
+        if root.is_empty_root() && raw_leaves.len() == 0 {
+            return Ok(());
+        }
+
+        match proof {
+            Proof::AbsenceProof {
+                siblings,
+                leaf,
+                ignore_max_ns: _,
+                start_idx,
+            } => {
+                let leaf = leaf.ok_or(RangeProofError::MalformedProof)?;
+                // Check that they haven't provided an absence proof for a non-empty namespace
+                if raw_leaves.len() != 0 {
+                    return Err(RangeProofError::MalformedProof);
+                }
+                // Check that the provided leaf actually precedes the namespace
+                if leaf.max_namespace() >= namespace {
+                    return Err(RangeProofError::MalformedProof);
+                }
+                // The number of left siblings needed is the same as the number of ones in the binary
+                // decomposition of the start index
+                let mut num_left_siblings = 0;
+                let mut modified_start_idx = start_idx;
+                while modified_start_idx != 0 {
+                    if modified_start_idx & 1 != 0 {
+                        num_left_siblings += 1;
+                    }
+                    modified_start_idx >>= 1;
+                }
+
+                // Check that the closest sibling actually follows the namespace
+                if siblings.len() >= num_left_siblings {
+                    let leftmost_right_sibling = &siblings[num_left_siblings - 1];
+                    if leftmost_right_sibling.min_namespace() <= namespace {
+                        return Err(RangeProofError::MalformedProof);
+                    }
+                }
+                // Then, check that the root is real
+                self.verify_leaf_hashes(root, &[leaf], siblings, start_idx as usize)
+            }
+            Proof::PresenceProof {
+                siblings,
+                ignore_max_ns: _,
+                start_idx,
+            } => {
+                let leaf_hashes: Vec<NamespacedHash> = raw_leaves
+                    .iter()
+                    .map(|data| NamespacedHash::hash_leaf(data, namespace))
+                    .collect();
+                self.verify_leaf_hashes(root, &mut &leaf_hashes[..], siblings, start_idx as usize)
+            }
+        }
     }
 }
 
@@ -569,6 +742,7 @@ pub enum RangeProofError {
     TreeTooLarge,
     /// Indicates that the tree is not properly ordered by namespace
     MalformedTree,
+    MalformedProof,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -597,6 +771,7 @@ impl std::fmt::Display for RangeProofError {
             RangeProofError::TreeIsEmpty => f.write_str("RangeProofError::TreeIsEmpty"),
             RangeProofError::TreeTooLarge => f.write_str("RangeProofError::TreeTooLarge"),
             RangeProofError::MalformedTree => f.write_str("RangeProofError::MalformedTree"),
+            RangeProofError::MalformedProof => f.write_str("RangeProofError::MalformedProof"),
         }
     }
 }
@@ -623,13 +798,23 @@ mod tests {
         let mut tree = tree_with_n_leaves(n);
         let root = tree.root();
         for i in 1..=n {
-            for j in 0..i {
-                let mut proof = tree.build_range_proof(j..i);
+            for j in 0..=i {
+                let proof = tree.build_range_proof(j..i);
                 let leaf_hashes: Vec<NamespacedHash> =
                     tree.leaves[j..i].iter().map(|l| l.hash.clone()).collect();
-                let res = tree.check_range_proof(&root, &mut &leaf_hashes[..], &mut proof, j);
-                assert!(res.is_ok());
-                assert!(res.unwrap() == RangeProofType::Complete)
+                let res = tree.check_range_proof(
+                    &root,
+                    &mut &leaf_hashes[..],
+                    &mut proof.take_siblings(),
+                    j,
+                );
+                if i != j {
+                    assert!(res.is_ok());
+                    assert!(res.unwrap() == RangeProofType::Complete)
+                } else {
+                    // Cannot prove the empty range!
+                    assert!(res.is_err())
+                }
             }
         }
     }
@@ -654,9 +839,14 @@ mod tests {
         // For each potential range of size four, build and check a range proof
         for i in 0..=28 {
             let leaf_range = i..i + 4;
-            let mut proof = tree.build_range_proof(leaf_range.clone());
+            let proof = tree.build_range_proof(leaf_range.clone());
 
-            let result = tree.check_range_proof(&root, &leaf_hashes[leaf_range], &mut proof, i);
+            let result = tree.check_range_proof(
+                &root,
+                &leaf_hashes[leaf_range],
+                &mut proof.take_siblings(),
+                i,
+            );
             assert!(result.is_ok());
 
             // We've set up our tree to have four leaves in each namespace, so a
@@ -685,13 +875,7 @@ mod tests {
             let proof = tree.build_range_proof(range.clone());
 
             assert!(tree
-                .verify_namespace(
-                    &root,
-                    &raw_leaves[range.clone()],
-                    *namespace,
-                    proof,
-                    range.start,
-                )
+                .verify_namespace(&root, &raw_leaves[range.clone()], *namespace, proof,)
                 .is_ok());
         }
     }
