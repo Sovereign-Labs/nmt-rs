@@ -49,11 +49,11 @@ impl NamespacedHash {
         self.0[2 * NAMESPACE_ID_LEN..].copy_from_slice(hash)
     }
 
-    pub fn hash_leaf<'a>(raw_data: &'a [u8], namespace: NamespaceId) -> Self {
+    pub fn hash_leaf(raw_data: impl AsRef<[u8]>, namespace: NamespaceId) -> Self {
         let mut output = NamespacedHash::with_min_and_max_ns(namespace, namespace);
         let mut hasher = Hasher::new_with_prefix(&LEAF_DOMAIN_SEPARATOR);
         hasher.update(namespace.as_ref());
-        hasher.update(raw_data);
+        hasher.update(raw_data.as_ref());
         output.set_hash(hasher.finalize().as_ref());
         output
     }
@@ -63,8 +63,9 @@ impl NamespacedHash {
     }
 
     pub fn contains(&self, namespace: NamespaceId) -> bool {
-        (self.min_namespace() <= namespace && self.max_namespace() >= namespace)
-            || self.is_empty_root()
+        self.min_namespace() <= namespace
+            && self.max_namespace() >= namespace
+            && !self.is_empty_root()
     }
 
     pub fn is_empty_root(&self) -> bool {
