@@ -2,7 +2,6 @@
 use std::{collections::HashMap, ops::Range};
 
 use db::{LeafWithHash, MemDb, Node, PreimageDb};
-use namespaced_hash::{NamespaceId, NamespacedHash, EMPTY_ROOT};
 
 mod namespaced_hash;
 pub use namespaced_hash::*;
@@ -57,6 +56,45 @@ impl Proof {
                 }
             }
         }
+    }
+
+    pub fn siblings(&self) -> &Vec<NamespacedHash> {
+        match self {
+            Proof::AbsenceProof { siblings, .. } => siblings,
+            Proof::PresenceProof { siblings, .. } => siblings,
+        }
+    }
+
+    pub fn start_idx(&self) -> u32 {
+        match self {
+            Proof::AbsenceProof {
+                siblings: _,
+                start_idx,
+                ..
+            } => *start_idx,
+            Proof::PresenceProof {
+                siblings: _,
+                start_idx,
+                ..
+            } => *start_idx,
+        }
+    }
+    pub fn leftmost_right_sibling(&self) -> Option<&NamespacedHash> {
+        let siblings = self.siblings();
+        let num_left_siblings = compute_num_left_siblings(self.start_idx() as usize);
+        if siblings.len() > num_left_siblings {
+            return Some(&siblings[num_left_siblings]);
+        }
+        None
+    }
+
+    pub fn rightmost_left_sibling(&self) -> Option<&NamespacedHash> {
+        let siblings = self.siblings();
+        let num_left_siblings = compute_num_left_siblings(self.start_idx() as usize);
+        if num_left_siblings != 0 && num_left_siblings <= siblings.len() {
+            return Some(&siblings[num_left_siblings - 1]);
+        }
+        None
     }
 
     #[cfg(test)]
