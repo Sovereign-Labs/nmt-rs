@@ -500,6 +500,13 @@ where
         (leaves, self.build_range_proof(leaf_range))
     }
 
+    pub fn get_index_with_proof(&mut self, idx: usize) -> (Vec<u8>, Proof) {
+        (
+            self.leaves[idx].data.clone(),
+            self.build_range_proof(idx..idx + 1),
+        )
+    }
+
     pub fn get_namespace_with_proof(&mut self, namespace: NamespaceId) -> (Vec<Vec<u8>>, Proof) {
         let leaf_range = if let Some(range) = self.namespace_ranges.get(&namespace) {
             range.clone()
