@@ -459,7 +459,7 @@ where
 
     /// Creates a range proof providing the sibling hashes required to show that a set of values really does occur in
     /// the merkle tree at some half-open range of indices. Intermediate hashes are identified by an in-order traversal
-    /// and are returned in that same order.
+    /// and are returned in that same order. Panics if the range to prove is larger than the tree's leaf array.
     ///     
     /// Example: consider the following merkle tree with leaves [C, D, E, F]
     ///```ascii
@@ -473,11 +473,18 @@ where
     ///
     /// A range proof of build_range_proof(1..3) would return the vector [C, F], since those two hashes, together
     /// with the two leaves in the range, are sufficient to reconstruct the tree
-    fn build_range_proof(&mut self, leaf_range: Range<usize>) -> Proof {
+    pub fn build_range_proof(&mut self, leaf_range: Range<usize>) -> Proof {
         // Calculate the root to ensure that the preimage db is populated
         let root = self.root();
         let mut proof = Vec::new();
         let start_idx = leaf_range.start as u32;
+        if leaf_range.end > self.leaves.len() {
+            panic!(
+                "Index out of range: cannot access leaf {} in leaves array of size {}",
+                leaf_range.end,
+                self.leaves.len()
+            )
+        }
         self.build_range_proof_inner(leaf_range, root, 0..self.leaves.len(), &mut proof);
 
         Proof::PresenceProof {
@@ -485,6 +492,12 @@ where
             start_idx,
             ignore_max_ns: self.ignore_max_ns,
         }
+    }
+
+    pub fn get_range_with_proof(&mut self, leaf_range: Range<usize>) -> (Vec<Vec<u8>>, Proof) {
+        let leaves = &self.leaves[leaf_range.clone()];
+        let leaves = leaves.iter().map(|leaf| leaf.data.clone()).collect();
+        (leaves, self.build_range_proof(leaf_range))
     }
 
     pub fn get_namespace_with_proof(&mut self, namespace: NamespaceId) -> (Vec<Vec<u8>>, Proof) {
