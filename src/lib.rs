@@ -29,7 +29,7 @@ pub enum Proof {
 
 impl Proof {
     /// Verify that the provided *raw* leaves occur in the provided namespace, using this proof
-    pub fn verify(
+    pub fn verify_complete_namespace(
         self,
         root: &NamespacedHash,
         raw_leaves: &[impl AsRef<[u8]>],
@@ -38,6 +38,38 @@ impl Proof {
         let mut tree = NamespaceMerkleTree::<MemDb>::new();
         tree.ignore_max_ns = self.ignores_max_ns();
         tree.verify_namespace(root, raw_leaves, namespace, self)
+    }
+
+    /// Verify a range proof
+    pub fn verify_range(
+        self,
+        root: &NamespacedHash,
+        raw_leaves: &[impl AsRef<[u8]>],
+        leaf_namespace: NamespaceId,
+    ) -> Result<(), RangeProofError> {
+        let mut tree = NamespaceMerkleTree::<MemDb>::new();
+        if let Proof::PresenceProof {
+            mut siblings,
+            ignore_max_ns,
+            start_idx,
+        } = self
+        {
+            tree.ignore_max_ns = ignore_max_ns;
+
+            let leaf_hashes: Vec<NamespacedHash> = raw_leaves
+                .iter()
+                .map(|data| NamespacedHash::hash_leaf(data.as_ref(), leaf_namespace))
+                .collect();
+            tree.check_range_proof(
+                root,
+                &mut &leaf_hashes[..],
+                &mut siblings,
+                start_idx as usize,
+            )?;
+            Ok(())
+        } else {
+            Err(RangeProofError::MalformedProof)
+        }
     }
     fn convert_to_absence_proof(&mut self, leaf: NamespacedHash) {
         match self {
