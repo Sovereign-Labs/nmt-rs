@@ -17,6 +17,12 @@ pub const EMPTY_ROOT: NamespacedHash = NamespacedHash([
 #[derive(Debug, PartialEq, PartialOrd, Eq, Ord, Copy, Clone, Hash)]
 pub struct NamespaceId(pub [u8; NAMESPACE_ID_LEN]);
 
+impl NamespaceId {
+    pub fn is_reserved(&self) -> bool {
+        self.0 <= [0, 0, 0, 0, 0, 0, 0, 255]
+    }
+}
+
 impl AsRef<[u8]> for NamespaceId {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
