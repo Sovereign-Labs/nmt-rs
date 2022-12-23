@@ -153,6 +153,13 @@ impl Proof {
             } => *ignore_max_ns,
         }
     }
+
+    pub fn is_of_absence(&self) -> bool {
+        match self {
+            Self::AbsenceProof { .. } => true,
+            Self::PresenceProof { .. } => false,
+        }
+    }
 }
 
 /// Compute the number of left siblings required for an inclusion proof of the node at the provided index
@@ -763,17 +770,23 @@ mod tests {
         let min_namespace = NamespaceId([0u8; NAMESPACE_ID_LEN]);
         let max_namespace = NamespaceId([0xffu8; NAMESPACE_ID_LEN]);
         let (leaves, proof) = tree.get_namespace_with_proof(min_namespace);
-        assert!(proof.verify(&root, &leaves, min_namespace).is_ok());
+        assert!(proof
+            .verify_complete_namespace(&root, &leaves, min_namespace)
+            .is_ok());
 
         let (leaves, proof) = tree.get_namespace_with_proof(max_namespace);
-        assert!(proof.verify(&root, &leaves, max_namespace).is_ok());
+        assert!(proof
+            .verify_complete_namespace(&root, &leaves, max_namespace)
+            .is_ok());
 
         tree.push_leaf(b"some_leaf", max_namespace)
             .expect("can always push max namespace");
 
         let root = tree.root();
         let (leaves, proof) = tree.get_namespace_with_proof(max_namespace);
-        assert!(proof.verify(&root, &leaves, max_namespace).is_ok());
+        assert!(proof
+            .verify_complete_namespace(&root, &leaves, max_namespace)
+            .is_ok());
     }
 
     #[test]
@@ -815,7 +828,7 @@ mod tests {
             let (leaves, proof) = tree.get_namespace_with_proof(namespace);
             println!("Poof: {:?}", &proof);
 
-            let pf = proof.verify(&root, &leaves, namespace);
+            let pf = proof.verify_complete_namespace(&root, &leaves, namespace);
             if !pf.is_ok() {
                 dbg!(&pf, namespace);
                 println!("{:?}", &leaves);
@@ -852,7 +865,7 @@ mod tests {
             let (leaves, proof) = tree.get_namespace_with_proof(namespace);
             println!("Poof: {:?}", &proof);
 
-            let pf = proof.verify(&root, &leaves, namespace);
+            let pf = proof.verify_complete_namespace(&root, &leaves, namespace);
             if !pf.is_ok() {
                 dbg!(&pf, namespace);
                 println!("{:?}", &leaves);
