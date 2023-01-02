@@ -10,7 +10,7 @@ pub const LEAF_DOMAIN_SEPARATOR: [u8; 1] = [0u8];
 pub const INTERNAL_NODE_DOMAIN_SEPARATOR: [u8; 1] = [1u8];
 pub const MAX_NS: NamespaceId = NamespaceId([0xff; NAMESPACE_ID_LEN]);
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NamespacedSha2Hasher {
     ignore_max_ns: bool,
 }

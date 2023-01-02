@@ -2,10 +2,9 @@
 
 use std::{collections::HashMap, ops::Range};
 
-use namespaced_hash::{NamespaceId, NamespaceMerkleHasher, NamespacedHash, NAMESPACE_ID_LEN};
-use nmt_proof::NamespaceProof;
+pub use nmt_proof::NamespaceProof;
 use simple_merkle::{
-    db::{LeafWithHash, PreimageDb},
+    db::{LeafWithHash, MemDb, PreimageDb},
     error::RangeProofError,
     proof::Proof,
     tree::{MerkleHash, MerkleTree},
@@ -13,11 +12,13 @@ use simple_merkle::{
 };
 
 mod namespaced_hash;
-// pub use namespaced_hash::*;
+pub use namespaced_hash::*;
 
 // pub mod db;
 pub mod nmt_proof;
 pub mod simple_merkle;
+
+pub type CelestiaNmt = NamespaceMerkleTree<MemDb<NamespacedHash>, NamespacedSha2Hasher>;
 
 // /// Compute the number of left siblings required for an inclusion proof of the node at the provided index
 // fn compute_num_left_siblings(node_idx: usize) -> usize {
@@ -211,8 +212,18 @@ where
         self.inner.build_range_proof(leaf_range)
     }
 
-    pub fn get_range_with_proof(&mut self, leaf_range: Range<usize>) -> (Vec<Vec<u8>>, Proof<M>) {
-        self.inner.get_range_with_proof(leaf_range)
+    pub fn get_range_with_proof(
+        &mut self,
+        leaf_range: Range<usize>,
+    ) -> (Vec<Vec<u8>>, NamespaceProof<M>) {
+        let (leaves, proof) = self.inner.get_range_with_proof(leaf_range);
+        (
+            leaves,
+            NamespaceProof::PresenceProof {
+                proof: proof,
+                ignore_max_ns: self.ignore_max_ns,
+            },
+        )
     }
 
     pub fn get_index_with_proof(&mut self, idx: usize) -> (Vec<u8>, Proof<M>) {
