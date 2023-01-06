@@ -106,7 +106,50 @@ impl AsRef<[u8]> for NamespaceId {
 }
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash)]
-pub struct NamespacedHash(pub [u8; NAMESPACED_HASH_LEN]);
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct NamespacedHash(
+    #[serde(serialize_with = "<[_]>::serialize")] pub [u8; NAMESPACED_HASH_LEN],
+);
+
+impl<'de> serde::Deserialize<'de> for NamespacedHash {
+    fn deserialize<D>(deserializer: D) -> Result<Self, <D as serde::Deserializer<'de>>::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct ArrayVisitor<T> {
+            element: std::marker::PhantomData<T>,
+        }
+
+        impl<'de, T> serde::de::Visitor<'de> for ArrayVisitor<T>
+        where
+            T: Default + Copy + serde::Deserialize<'de>,
+        {
+            type Value = [T; 48];
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str(concat!("an array of length ", 48))
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<[T; 48], A::Error>
+            where
+                A: serde::de::SeqAccess<'de>,
+            {
+                let mut arr = [T::default(); 48];
+                for i in 0..48 {
+                    arr[i] = seq
+                        .next_element()?
+                        .ok_or_else(|| serde::de::Error::invalid_length(i, &self))?;
+                }
+                Ok(arr)
+            }
+        }
+
+        let visitor = ArrayVisitor {
+            element: std::marker::PhantomData,
+        };
+        Ok(NamespacedHash(deserializer.deserialize_tuple(48, visitor)?))
+    }
+}
 
 impl Default for NamespacedHash {
     fn default() -> Self {
