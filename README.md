@@ -8,12 +8,12 @@ This code has not been audited, and may contain critical vulnerabilities. Do not
 
 ## Functionality
 
-[x] Compute merkle root  
+- [x] Compute merkle root  
 
-[x] Create index-based range proofs  
+- [x] Create index-based range proofs  
 
-[x] Verify index-based range proofs
+- [x] Verify index-based range proofs
 
-[x] Create namespace range proofs
+- [x] Create namespace range proofs
 
-[x] Verify namespace range proofs
+- [x] Verify namespace range proofs
