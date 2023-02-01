@@ -6,6 +6,20 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Range;
 
+/// Manually implement the method we need from #[feature(slice_take)] to
+/// allow building with stable;
+trait TakeLast<T> {
+    fn slice_take_last<'a>(self: &mut &'a Self) -> Option<&'a T>;
+}
+
+impl<T> TakeLast<T> for [T] {
+    fn slice_take_last<'a>(self: &mut &'a Self) -> Option<&'a T> {
+        let (last, rem) = self.split_last()?;
+        *self = rem;
+        Some(last)
+    }
+}
+
 pub struct MerkleTree<Db, M>
 where
     M: MerkleHash,
@@ -196,7 +210,7 @@ where
             // If the right subtree contains only a single node, it must be the last remaining leaf
             if right_subtrie_size == 1 {
                 leaves
-                    .take_last()
+                    .slice_take_last()
                     .ok_or(RangeProofError::MissingLeaf)?
                     .clone()
             } else {
@@ -221,7 +235,7 @@ where
             // If the right subtree contains only a single node, it must be the last remaining leaf
             if left_subtrie_size == 1 {
                 leaves
-                    .take_last()
+                    .slice_take_last()
                     .ok_or(RangeProofError::MissingLeaf)?
                     .clone()
             } else {
