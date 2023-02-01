@@ -108,9 +108,11 @@ impl AsRef<[u8]> for NamespaceId {
 #[derive(Debug, PartialEq, Clone, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct NamespacedHash(
-    #[serde(serialize_with = "<[_]>::serialize")] pub [u8; NAMESPACED_HASH_LEN],
+    #[cfg_attr(feature = "serde", serde(serialize_with = "<[_]>::serialize"))]
+    pub  [u8; NAMESPACED_HASH_LEN],
 );
 
+#[cfg(feature = "serde")]
 impl<'de> serde::Deserialize<'de> for NamespacedHash {
     fn deserialize<D>(deserializer: D) -> Result<Self, <D as serde::Deserializer<'de>>::Error>
     where
