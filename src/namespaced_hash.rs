@@ -107,14 +107,20 @@ impl AsRef<[u8]> for NamespaceId {
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
-#[cfg_attr(
-    feature = "borsh",
-    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
-)]
+#[cfg_attr(feature = "borsh", derive(borsh::BorshSerialize))]
 pub struct NamespacedHash(
     #[cfg_attr(feature = "serde", serde(serialize_with = "<[_]>::serialize"))]
     pub  [u8; NAMESPACED_HASH_LEN],
 );
+
+#[cfg(feature = "borsh")]
+impl borsh::BorshDeserialize for NamespacedHash {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let mut out = [0u8; NAMESPACED_HASH_LEN];
+        reader.read_exact(&mut out)?;
+        Ok(NamespacedHash(out))
+    }
+}
 
 #[cfg(feature = "serde")]
 impl<'de> serde::Deserialize<'de> for NamespacedHash {
