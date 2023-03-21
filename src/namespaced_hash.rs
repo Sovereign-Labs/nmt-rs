@@ -107,6 +107,10 @@ impl AsRef<[u8]> for NamespaceId {
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct NamespacedHash(
     #[cfg_attr(feature = "serde", serde(serialize_with = "<[_]>::serialize"))]
     pub  [u8; NAMESPACED_HASH_LEN],
