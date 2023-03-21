@@ -107,13 +107,13 @@ impl AsRef<[u8]> for NamespaceId {
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
-#[cfg_attr(feature = "borsh", derive(borsh::BorshSerialize))]
+#[cfg_attr(any(test, feature = "borsh"), derive(borsh::BorshSerialize))]
 pub struct NamespacedHash(
     #[cfg_attr(feature = "serde", serde(serialize_with = "<[_]>::serialize"))]
     pub  [u8; NAMESPACED_HASH_LEN],
 );
 
-#[cfg(feature = "borsh")]
+#[cfg(any(test, feature = "borsh"))]
 impl borsh::BorshDeserialize for NamespacedHash {
     fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let mut out = [0u8; NAMESPACED_HASH_LEN];
@@ -242,5 +242,26 @@ impl TryFrom<&[u8]> for NamespaceId {
         let mut out = [0u8; NAMESPACE_ID_LEN];
         out.copy_from_slice(value);
         Ok(Self(out))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::NamespacedHash;
+
+    use borsh::de::BorshDeserialize;
+    use borsh::ser::BorshSerialize;
+    #[test]
+    fn test_namespaced_hash_borsh() {
+        let hash = NamespacedHash([8u8; 48]);
+
+        let serialized = hash
+            .try_to_vec()
+            .expect("Serialization to vec must succeed");
+
+        let got =
+            NamespacedHash::deserialize(&mut &serialized[..]).expect("serialized hash is correct");
+
+        assert_eq!(got, hash);
     }
 }
