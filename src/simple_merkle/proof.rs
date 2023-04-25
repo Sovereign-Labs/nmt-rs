@@ -10,6 +10,10 @@ use super::{
 /// This proof may prove the presence of some set of leaves, or the
 /// absence of a particular namespace
 #[derive(Debug, PartialEq, Clone, Default)]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct Proof<M: MerkleHash> {
     pub siblings: Vec<M::Output>,
     pub start_idx: u32,

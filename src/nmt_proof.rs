@@ -7,11 +7,15 @@ use crate::{
     NamespaceMerkleTree,
 };
 
-#[derive(Debug, PartialEq, Clone)]
 /// A proof of some statement about a namespaced merkle tree.
 ///
 /// This proof may prove the presence of some set of leaves, or the
 /// absence of a particular namespace
+#[derive(Debug, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum NamespaceProof<M: MerkleHash> {
     AbsenceProof {
         proof: Proof<M>,
