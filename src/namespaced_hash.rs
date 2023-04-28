@@ -106,12 +106,8 @@ impl AsRef<[u8]> for NamespaceId {
 }
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(any(test, feature = "borsh"), derive(borsh::BorshSerialize))]
-pub struct NamespacedHash(
-    #[cfg_attr(feature = "serde", serde(serialize_with = "<[_]>::serialize"))]
-    pub  [u8; NAMESPACED_HASH_LEN],
-);
+pub struct NamespacedHash(pub [u8; NAMESPACED_HASH_LEN]);
 
 #[cfg(any(test, feature = "borsh"))]
 impl borsh::BorshDeserialize for NamespacedHash {
@@ -119,6 +115,21 @@ impl borsh::BorshDeserialize for NamespacedHash {
         let mut out = [0u8; NAMESPACED_HASH_LEN];
         reader.read_exact(&mut out)?;
         Ok(NamespacedHash(out))
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for NamespacedHash {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeTuple;
+        let mut seq = serializer.serialize_tuple(NAMESPACED_HASH_LEN)?;
+        for elem in &self.0[..] {
+            seq.serialize_element(elem)?;
+        }
+        seq.end()
     }
 }
 
@@ -136,18 +147,18 @@ impl<'de> serde::Deserialize<'de> for NamespacedHash {
         where
             T: Default + Copy + serde::Deserialize<'de>,
         {
-            type Value = [T; 48];
+            type Value = [T; NAMESPACED_HASH_LEN];
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
                 formatter.write_str(concat!("an array of length ", 48))
             }
 
-            fn visit_seq<A>(self, mut seq: A) -> Result<[T; 48], A::Error>
+            fn visit_seq<A>(self, mut seq: A) -> Result<[T; NAMESPACED_HASH_LEN], A::Error>
             where
                 A: serde::de::SeqAccess<'de>,
             {
-                let mut arr = [T::default(); 48];
-                for i in 0..48 {
+                let mut arr = [T::default(); NAMESPACED_HASH_LEN];
+                for i in 0..NAMESPACED_HASH_LEN {
                     arr[i] = seq
                         .next_element()?
                         .ok_or_else(|| serde::de::Error::invalid_length(i, &self))?;
@@ -159,7 +170,9 @@ impl<'de> serde::Deserialize<'de> for NamespacedHash {
         let visitor = ArrayVisitor {
             element: std::marker::PhantomData,
         };
-        Ok(NamespacedHash(deserializer.deserialize_tuple(48, visitor)?))
+        Ok(NamespacedHash(
+            deserializer.deserialize_tuple(NAMESPACED_HASH_LEN, visitor)?,
+        ))
     }
 }
 
@@ -261,6 +274,34 @@ mod tests {
 
         let got =
             NamespacedHash::deserialize(&mut &serialized[..]).expect("serialized hash is correct");
+
+        assert_eq!(got, hash);
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_namespaced_hash_serde_json() {
+        let hash = NamespacedHash([8u8; 48]);
+
+        let serialized = serde_json::to_vec(&hash).expect("Serialization to vec must succeed");
+
+        let got: NamespacedHash =
+            serde_json::from_slice(&serialized[..]).expect("serialized hash is correct");
+
+        assert_eq!(got, hash);
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_namespaced_hash_serde_postcard() {
+        let hash = NamespacedHash([8u8; 48]);
+
+        let serialized: Vec<u8> =
+            postcard::to_allocvec(&hash).expect("Serialization to vec must succeed");
+        println!("{:?}", &serialized);
+
+        let got: NamespacedHash =
+            postcard::from_bytes(&serialized[..]).expect("serialized hash is correct");
 
         assert_eq!(got, hash);
     }
