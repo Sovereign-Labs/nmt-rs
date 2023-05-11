@@ -32,6 +32,7 @@ jobs:
       - name: Run cargo fmt check
         run: |
           cargo --version;
+          cargo fmt --version;
           if ! cargo fmt --check ; then
             echo "Formatting errors detected, please rune `cargo fmt` to fix it";
             exit 1
