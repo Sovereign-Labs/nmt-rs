@@ -11,6 +11,7 @@ pub const INTERNAL_NODE_DOMAIN_SEPARATOR: [u8; 1] = [1u8];
 pub const MAX_NS: NamespaceId = NamespaceId([0xff; NAMESPACE_ID_LEN]);
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NamespacedSha2Hasher {
     ignore_max_ns: bool,
 }
