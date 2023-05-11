@@ -21,8 +21,8 @@ impl<T> TakeLast<T> for [T] {
 }
 
 pub struct MerkleTree<Db, M>
-where
-    M: MerkleHash,
+    where
+        M: MerkleHash,
 {
     leaves: Vec<LeafWithHash<M::Output>>,
     db: Db,
@@ -44,7 +44,11 @@ impl<Db: PreimageDb<<M as MerkleHash>::Output>, M: MerkleHash> Default for Merkl
 }
 
 pub trait MerkleHash: Default {
+    #[cfg(not(feature = "serde"))]
     type Output: Debug + PartialEq + Eq + Clone + Default + Hash;
+
+    #[cfg(feature = "serde")]
+    type Output: Debug + PartialEq + Eq + Clone + Default + Hash + serde::Serialize + serde::de::DeserializeOwned;
 
     const EMPTY_ROOT: Self::Output;
 
@@ -53,9 +57,9 @@ pub trait MerkleHash: Default {
 }
 
 impl<Db, M> MerkleTree<Db, M>
-where
-    Db: PreimageDb<M::Output>,
-    M: MerkleHash,
+    where
+        Db: PreimageDb<M::Output>,
+        M: MerkleHash,
 {
     pub fn new() -> Self {
         Self {

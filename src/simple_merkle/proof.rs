@@ -14,6 +14,10 @@ use super::{
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 pub struct Proof<M: MerkleHash> {
     pub siblings: Vec<M::Output>,
     pub start_idx: u32,

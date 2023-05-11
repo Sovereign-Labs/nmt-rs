@@ -16,6 +16,10 @@ use crate::{
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 pub enum NamespaceProof<M: MerkleHash> {
     AbsenceProof {
         proof: Proof<M>,
