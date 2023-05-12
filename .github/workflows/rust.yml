@@ -35,10 +35,11 @@ jobs:
       - name: Run cargo fmt check
         run: |
           set;
+          ls -la ~/.config/;
           cargo --version;
           cargo fmt --version;
           if ! cargo fmt --check --verbose ; then
-            echo "Formatting errors detected, please rune `cargo fmt` to fix it";
+            echo "Formatting errors detected, please run 'cargo fmt' to fix it";
             exit 1
           fi
 
