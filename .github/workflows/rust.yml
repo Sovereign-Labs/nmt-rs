@@ -31,6 +31,7 @@ jobs:
         run: cargo check
       - name: Run cargo fmt check
         run: |
+          set;
           cargo --version;
           cargo fmt --version;
           if ! cargo fmt --check ; then
