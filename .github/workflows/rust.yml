@@ -32,16 +32,17 @@ jobs:
           version: "v0.4.0"
       - name: Run cargo check
         run: cargo check
-      - name: Run cargo fmt check
-        run: |
-          set;
-          ls -la ~/.config/;
-          cargo --version;
-          cargo fmt --version;
-          if ! cargo fmt --check --verbose ; then
-            echo "Formatting errors detected, please run 'cargo fmt' to fix it";
-            exit 1
-          fi
+# Disabled Due to issue with rustfmt our team has.
+#      - name: Run cargo fmt check
+#        run: |
+#          set;
+#          ls -la ~/.config/;
+#          cargo --version;
+#          cargo fmt --version;
+#          if ! cargo fmt --check --verbose ; then
+#            echo "Formatting errors detected, please run 'cargo fmt' to fix it";
+#            exit 1
+#          fi
 
   # Check that every combination of features is working properly.
   hack:
