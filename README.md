@@ -1,3 +1,5 @@
+[![codecov](https://codecov.io/gh/Sovereign-Labs/nmt-rs/branch/master/graph/badge.svg?token=Q8U6SLAZOT)](https://codecov.io/gh/Sovereign-Labs/nmt-rs)
+
 # NMT
 
 An implementation of a namespaced merkle tree in Rust.
