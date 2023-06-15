@@ -16,10 +16,7 @@ use crate::{
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(
-    feature = "serde",
-    derive(serde::Serialize, serde::Deserialize)
-)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum NamespaceProof<M: MerkleHash> {
     AbsenceProof {
         proof: Proof<M>,
@@ -70,7 +67,7 @@ impl<M: NamespaceMerkleHasher<Output = NamespacedHash>> NamespaceProof<M> {
                 .collect();
             tree.inner.check_range_proof(
                 root,
-                &mut &leaf_hashes[..],
+                &leaf_hashes[..],
                 &mut siblings,
                 start_idx as usize,
             )?;
