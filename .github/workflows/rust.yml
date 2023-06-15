@@ -23,26 +23,20 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          override: true
           default: true
-          components: rustfmt
+          components: clippy, rustfmt
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.3
         with:
           version: "v0.4.0"
-      - name: Run cargo check
-        run: cargo check
-# Disabled Due to issue with rustfmt our team has.
-#      - name: Run cargo fmt check
-#        run: |
-#          set;
-#          ls -la ~/.config/;
-#          cargo --version;
-#          cargo fmt --version;
-#          if ! cargo fmt --check --verbose ; then
-#            echo "Formatting errors detected, please run 'cargo fmt' to fix it";
-#            exit 1
-#          fi
+      - name: Run cargo clippy
+        run: cargo clippy --all-features --all-targets -- -D warnings
+      - name: Run cargo fmt check
+        run: |
+          if ! cargo fmt --check --verbose ; then
+            echo "Formatting errors detected, please run 'cargo fmt' to fix it";
+            exit 1
+          fi
 
   # Check that every combination of features is working properly.
   hack:
@@ -57,9 +51,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          override: true
           default: true
-          components: rustfmt
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.3
       - name: cargo install cargo-hack
@@ -67,6 +59,7 @@ jobs:
       # intentionally no target specifier; see https://github.com/jonhoo/rust-ci-conf/pull/4
       - name: cargo hack
         run: cargo hack --feature-powerset check
+
   test:
     runs-on: ubuntu-latest
     env:
@@ -78,15 +71,14 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          override: true
           default: true
-          components: rustfmt
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.3
         with:
           version: "v0.4.0"
       - name: Run cargo test
-        run: cargo test
+        run: cargo test --all-features
+
   coverage:
     runs-on: ubuntu-latest
     env:
@@ -101,8 +93,7 @@ jobs:
         with:
           toolchain: stable
           default: true
-          override: true
-          components: rustfmt, llvm-tools-preview
+          components: llvm-tools-preview
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.3
       - name: cargo install cargo-llvm-cov
@@ -113,6 +104,7 @@ jobs:
       - name: cargo llvm-cov
         run: cargo llvm-cov --locked --all-features --lcov --output-path lcov.info
       - name: Upload to codecov.io
+        if: ${{ github.repository == 'Sovereign-Labs/nmt-rs' }}
         uses: codecov/codecov-action@v3
         with:
           fail_ci_if_error: true
