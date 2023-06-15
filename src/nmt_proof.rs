@@ -17,11 +17,11 @@ use crate::{
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum NamespaceProof<M: MerkleHash> {
+pub enum NamespaceProof<M: MerkleHash, const NS_ID_LEN: usize> {
     AbsenceProof {
         proof: Proof<M>,
         ignore_max_ns: bool,
-        leaf: Option<NamespacedHash>,
+        leaf: Option<NamespacedHash<NS_ID_LEN>>,
     },
     PresenceProof {
         proof: Proof<M>,
@@ -29,15 +29,17 @@ pub enum NamespaceProof<M: MerkleHash> {
     },
 }
 
-impl<M: NamespaceMerkleHasher<Output = NamespacedHash>> NamespaceProof<M> {
+impl<M: NamespaceMerkleHasher<Output = NamespacedHash<NS_ID_LEN>>, const NS_ID_LEN: usize>
+    NamespaceProof<M, NS_ID_LEN>
+{
     /// Verify that the provided *raw* leaves occur in the provided namespace, using this proof
     pub fn verify_complete_namespace(
         self,
-        root: &NamespacedHash,
+        root: &NamespacedHash<NS_ID_LEN>,
         raw_leaves: &[impl AsRef<[u8]>],
-        namespace: NamespaceId,
+        namespace: NamespaceId<NS_ID_LEN>,
     ) -> Result<(), RangeProofError> {
-        let tree = NamespaceMerkleTree::<NoopDb, M>::with_hasher(M::with_ignore_max_ns(
+        let tree = NamespaceMerkleTree::<NoopDb, M, NS_ID_LEN>::with_hasher(M::with_ignore_max_ns(
             self.ignores_max_ns(),
         ));
         tree.verify_namespace(root, raw_leaves, namespace, self)
@@ -46,11 +48,11 @@ impl<M: NamespaceMerkleHasher<Output = NamespacedHash>> NamespaceProof<M> {
     /// Verify a range proof
     pub fn verify_range(
         self,
-        root: &NamespacedHash,
+        root: &NamespacedHash<NS_ID_LEN>,
         raw_leaves: &[impl AsRef<[u8]>],
-        leaf_namespace: NamespaceId,
+        leaf_namespace: NamespaceId<NS_ID_LEN>,
     ) -> Result<(), RangeProofError> {
-        let tree = NamespaceMerkleTree::<NoopDb, M>::with_hasher(M::with_ignore_max_ns(
+        let tree = NamespaceMerkleTree::<NoopDb, M, NS_ID_LEN>::with_hasher(M::with_ignore_max_ns(
             self.ignores_max_ns(),
         ));
         if let NamespaceProof::PresenceProof {
@@ -61,7 +63,7 @@ impl<M: NamespaceMerkleHasher<Output = NamespacedHash>> NamespaceProof<M> {
             ..
         } = self
         {
-            let leaf_hashes: Vec<NamespacedHash> = raw_leaves
+            let leaf_hashes: Vec<NamespacedHash<NS_ID_LEN>> = raw_leaves
                 .iter()
                 .map(|data| NamespacedHash::hash_leaf(data.as_ref(), leaf_namespace))
                 .collect();
@@ -76,7 +78,7 @@ impl<M: NamespaceMerkleHasher<Output = NamespacedHash>> NamespaceProof<M> {
             Err(RangeProofError::MalformedProof)
         }
     }
-    pub fn convert_to_absence_proof(&mut self, leaf: NamespacedHash) {
+    pub fn convert_to_absence_proof(&mut self, leaf: NamespacedHash<NS_ID_LEN>) {
         match self {
             NamespaceProof::AbsenceProof { .. } => {}
             NamespaceProof::PresenceProof {
@@ -93,7 +95,7 @@ impl<M: NamespaceMerkleHasher<Output = NamespacedHash>> NamespaceProof<M> {
         }
     }
 
-    pub fn siblings(&self) -> &Vec<NamespacedHash> {
+    pub fn siblings(&self) -> &Vec<NamespacedHash<NS_ID_LEN>> {
         match self {
             NamespaceProof::AbsenceProof {
                 proof: Proof { siblings, .. },
@@ -126,7 +128,7 @@ impl<M: NamespaceMerkleHasher<Output = NamespacedHash>> NamespaceProof<M> {
             } => *start_idx,
         }
     }
-    pub fn leftmost_right_sibling(&self) -> Option<&NamespacedHash> {
+    pub fn leftmost_right_sibling(&self) -> Option<&NamespacedHash<NS_ID_LEN>> {
         let siblings = self.siblings();
         let num_left_siblings = compute_num_left_siblings(self.start_idx() as usize);
         if siblings.len() > num_left_siblings {
@@ -135,7 +137,7 @@ impl<M: NamespaceMerkleHasher<Output = NamespacedHash>> NamespaceProof<M> {
         None
     }
 
-    pub fn rightmost_left_sibling(&self) -> Option<&NamespacedHash> {
+    pub fn rightmost_left_sibling(&self) -> Option<&NamespacedHash<NS_ID_LEN>> {
         let siblings = self.siblings();
         let num_left_siblings = compute_num_left_siblings(self.start_idx() as usize);
         if num_left_siblings != 0 && num_left_siblings <= siblings.len() {
@@ -145,7 +147,7 @@ impl<M: NamespaceMerkleHasher<Output = NamespacedHash>> NamespaceProof<M> {
     }
 
     #[cfg(test)]
-    pub fn take_siblings(self) -> Vec<NamespacedHash> {
+    pub fn take_siblings(self) -> Vec<NamespacedHash<NS_ID_LEN>> {
         match self {
             Self::AbsenceProof {
                 proof: Proof { siblings, .. },
