@@ -20,14 +20,16 @@ impl<T> TakeLast<T> for [T] {
     }
 }
 
+type BoxedVisitor<M> = Box<dyn Fn(&<M as MerkleHash>::Output)>;
+
 pub struct MerkleTree<Db, M>
-    where
-        M: MerkleHash,
+where
+    M: MerkleHash,
 {
     leaves: Vec<LeafWithHash<M::Output>>,
     db: Db,
     root: Option<M::Output>,
-    visitor: Box<dyn Fn(&M::Output)>,
+    visitor: BoxedVisitor<M>,
     hasher: M,
 }
 
@@ -48,7 +50,14 @@ pub trait MerkleHash: Default {
     type Output: Debug + PartialEq + Eq + Clone + Default + Hash;
 
     #[cfg(feature = "serde")]
-    type Output: Debug + PartialEq + Eq + Clone + Default + Hash + serde::Serialize + serde::de::DeserializeOwned;
+    type Output: Debug
+        + PartialEq
+        + Eq
+        + Clone
+        + Default
+        + Hash
+        + serde::Serialize
+        + serde::de::DeserializeOwned;
 
     const EMPTY_ROOT: Self::Output;
 
@@ -57,15 +66,15 @@ pub trait MerkleHash: Default {
 }
 
 impl<Db, M> MerkleTree<Db, M>
-    where
-        Db: PreimageDb<M::Output>,
-        M: MerkleHash,
+where
+    Db: PreimageDb<M::Output>,
+    M: MerkleHash,
 {
     pub fn new() -> Self {
         Self {
             leaves: vec![],
             db: Default::default(),
-            root: Some(M::EMPTY_ROOT.clone()),
+            root: Some(M::EMPTY_ROOT),
             visitor: Box::new(|_| {}),
             hasher: M::default(),
         }
@@ -75,7 +84,7 @@ impl<Db, M> MerkleTree<Db, M>
         Self {
             leaves: vec![],
             db: Default::default(),
-            root: Some(M::EMPTY_ROOT.clone()),
+            root: Some(M::EMPTY_ROOT),
             visitor: Box::new(|_| {}),
             hasher,
         }
@@ -147,7 +156,7 @@ impl<Db, M> MerkleTree<Db, M>
         range_to_prove: Range<usize>,
         subtrie_root: M::Output,
         subtrie_range: Range<usize>,
-        mut out: &mut Vec<M::Output>,
+        out: &mut Vec<M::Output>,
     ) {
         if let Some(inner_node) = self.db.get(&subtrie_root) {
             match inner_node {
@@ -171,7 +180,7 @@ impl<Db, M> MerkleTree<Db, M>
                             range_to_prove.clone(),
                             l.clone(),
                             subtrie_range.start..split_point,
-                            &mut out,
+                            out,
                         );
                     }
 
@@ -185,21 +194,21 @@ impl<Db, M> MerkleTree<Db, M>
                             range_to_prove,
                             r.clone(),
                             split_point..subtrie_range.end,
-                            &mut out,
+                            out,
                         );
                     }
                 }
             }
         } else {
             assert_eq!(&subtrie_root, &M::EMPTY_ROOT);
-            return out.push(subtrie_root);
+            out.push(subtrie_root)
         }
     }
 
     fn check_range_proof_inner(
         &self,
         leaves: &mut &[M::Output],
-        mut proof: &mut Vec<M::Output>,
+        proof: &mut Vec<M::Output>,
         leaves_start_idx: usize,
         subtrie_size: usize,
         offset: usize,
@@ -221,7 +230,7 @@ impl<Db, M> MerkleTree<Db, M>
                 // Recurse right
                 self.check_range_proof_inner(
                     leaves,
-                    &mut proof,
+                    proof,
                     leaves_start_idx,
                     right_subtrie_size,
                     offset + split_point,
@@ -246,7 +255,7 @@ impl<Db, M> MerkleTree<Db, M>
                 // Recurse left
                 self.check_range_proof_inner(
                     leaves,
-                    &mut proof,
+                    proof,
                     leaves_start_idx,
                     left_subtrie_size,
                     offset,
@@ -273,13 +282,13 @@ impl<Db, M> MerkleTree<Db, M>
         // so we need to ensure that the root has size 2 or greater.
         match leaves.len() {
             0 => {
-                if root == &M::EMPTY_ROOT && proof.len() == 0 {
+                if root == &M::EMPTY_ROOT && proof.is_empty() {
                     return Ok(());
                 }
                 return Err(RangeProofError::NoLeavesProvided);
             }
             1 => {
-                if proof.len() == 0 {
+                if proof.is_empty() {
                     if &leaves[0] == root && leaves_start_idx == 0 {
                         return Ok(());
                     }

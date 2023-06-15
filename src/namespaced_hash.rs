@@ -54,7 +54,7 @@ impl MerkleHash for NamespacedSha2Hasher {
         let namespace = NamespaceId(namespace_bytes);
 
         let mut output = NamespacedHash::with_min_and_max_ns(namespace, namespace);
-        let mut hasher = Hasher::new_with_prefix(&LEAF_DOMAIN_SEPARATOR);
+        let mut hasher = Hasher::new_with_prefix(LEAF_DOMAIN_SEPARATOR);
         hasher.update(data.as_ref());
         output.set_hash(hasher.finalize().as_ref());
         output
@@ -97,6 +97,12 @@ pub struct NamespaceId(pub [u8; NAMESPACE_ID_LEN]);
 impl NamespaceId {
     pub fn is_reserved(&self) -> bool {
         self.0 <= [0, 0, 0, 0, 0, 0, 0, 255]
+    }
+}
+
+impl Default for NamespaceId {
+    fn default() -> Self {
+        Self([0; NAMESPACE_ID_LEN])
     }
 }
 
@@ -159,8 +165,8 @@ impl<'de> serde::Deserialize<'de> for NamespacedHash {
                 A: serde::de::SeqAccess<'de>,
             {
                 let mut arr = [T::default(); NAMESPACED_HASH_LEN];
-                for i in 0..NAMESPACED_HASH_LEN {
-                    arr[i] = seq
+                for (i, byte) in arr.iter_mut().enumerate() {
+                    *byte = seq
                         .next_element()?
                         .ok_or_else(|| serde::de::Error::invalid_length(i, &self))?;
                 }
@@ -222,7 +228,7 @@ impl NamespacedHash {
 
     pub fn hash_leaf(raw_data: impl AsRef<[u8]>, namespace: NamespaceId) -> Self {
         let mut output = NamespacedHash::with_min_and_max_ns(namespace, namespace);
-        let mut hasher = Hasher::new_with_prefix(&LEAF_DOMAIN_SEPARATOR);
+        let mut hasher = Hasher::new_with_prefix(LEAF_DOMAIN_SEPARATOR);
         hasher.update(namespace.as_ref());
         hasher.update(raw_data.as_ref());
         output.set_hash(hasher.finalize().as_ref());

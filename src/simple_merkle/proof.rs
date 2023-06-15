@@ -14,10 +14,7 @@ use super::{
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(
-    feature = "serde",
-    derive(serde::Serialize, serde::Deserialize)
-)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Proof<M: MerkleHash> {
     pub siblings: Vec<M::Output>,
     pub start_idx: u32,
@@ -37,7 +34,7 @@ where
 
         tree.check_range_proof(
             root,
-            &mut &leaf_hashes[..],
+            leaf_hashes,
             &mut self.siblings,
             self.start_idx as usize,
         )?;
@@ -45,7 +42,7 @@ where
     }
 
     pub fn siblings(&self) -> &Vec<M::Output> {
-        &&self.siblings
+        &self.siblings
     }
 
     pub fn start_idx(&self) -> u32 {
