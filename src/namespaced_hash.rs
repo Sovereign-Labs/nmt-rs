@@ -1,24 +1,27 @@
+use std::marker::PhantomData;
+
 use sha2::{Digest, Sha256};
 
 use crate::simple_merkle::tree::MerkleHash;
 pub const HASH_LEN: usize = 32;
-pub const NAMESPACE_ID_LEN: usize = 8;
-pub const NAMESPACED_HASH_LEN: usize = HASH_LEN + 2 * NAMESPACE_ID_LEN;
 pub type Hasher = Sha256;
 
 pub const LEAF_DOMAIN_SEPARATOR: [u8; 1] = [0u8];
 pub const INTERNAL_NODE_DOMAIN_SEPARATOR: [u8; 1] = [1u8];
-pub const MAX_NS: NamespaceId = NamespaceId([0xff; NAMESPACE_ID_LEN]);
 
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct NamespacedSha2Hasher {
+pub struct NamespacedSha2Hasher<const NS_ID_SIZE: usize> {
     ignore_max_ns: bool,
+    _data: PhantomData<[u8; NS_ID_SIZE]>,
 }
 
-impl NamespaceMerkleHasher for NamespacedSha2Hasher {
+impl<const NS_ID_SIZE: usize> NamespaceMerkleHasher for NamespacedSha2Hasher<NS_ID_SIZE> {
     fn with_ignore_max_ns(ignore_max_ns: bool) -> Self {
-        Self { ignore_max_ns }
+        Self {
+            ignore_max_ns,
+            _data: PhantomData,
+        }
     }
 
     fn ignores_max_ns(&self) -> bool {
@@ -26,10 +29,11 @@ impl NamespaceMerkleHasher for NamespacedSha2Hasher {
     }
 }
 
-impl Default for NamespacedSha2Hasher {
+impl<const NS_ID_SIZE: usize> Default for NamespacedSha2Hasher<NS_ID_SIZE> {
     fn default() -> Self {
         Self {
             ignore_max_ns: true,
+            _data: PhantomData,
         }
     }
 }
@@ -39,18 +43,13 @@ pub trait NamespaceMerkleHasher: MerkleHash {
     fn ignores_max_ns(&self) -> bool;
 }
 
-impl MerkleHash for NamespacedSha2Hasher {
-    type Output = NamespacedHash;
+impl<const NS_ID_SIZE: usize> MerkleHash for NamespacedSha2Hasher<NS_ID_SIZE> {
+    type Output = NamespacedHash<NS_ID_SIZE>;
 
-    const EMPTY_ROOT: Self::Output = NamespacedHash([
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 227, 176, 196, 66, 152, 252, 28, 20, 154,
-        251, 244, 200, 153, 111, 185, 36, 39, 174, 65, 228, 100, 155, 147, 76, 164, 149, 153, 27,
-        120, 82, 184, 85,
-    ]);
+    const EMPTY_ROOT: Self::Output = NamespacedHash::EMPTY_ROOT;
 
     fn hash_leaf(&self, data: &[u8]) -> Self::Output {
-        let mut namespace_bytes = [0u8; NAMESPACE_ID_LEN];
-        namespace_bytes.copy_from_slice(&data[..8]);
+        let namespace_bytes = data[..NS_ID_SIZE].try_into().expect("Leaf of invalid size");
         let namespace = NamespaceId(namespace_bytes);
 
         let mut output = NamespacedHash::with_min_and_max_ns(namespace, namespace);
@@ -65,11 +64,12 @@ impl MerkleHash for NamespacedSha2Hasher {
             panic!("Invalid nodes: left max namespace must be <= right min namespace")
         }
         let mut hasher = Hasher::new_with_prefix(INTERNAL_NODE_DOMAIN_SEPARATOR);
+        let max_nsid = NamespaceId::<NS_ID_SIZE>::max_id();
 
         let min_ns = std::cmp::min(left.min_namespace(), right.min_namespace());
-        let max_ns = if self.ignore_max_ns && left.min_namespace() == MAX_NS {
-            MAX_NS
-        } else if self.ignore_max_ns && right.min_namespace() == MAX_NS {
+        let max_ns = if self.ignore_max_ns && left.min_namespace() == max_nsid {
+            max_nsid
+        } else if self.ignore_max_ns && right.min_namespace() == max_nsid {
             left.max_namespace()
         } else {
             std::cmp::max(left.max_namespace(), right.max_namespace())
@@ -77,166 +77,42 @@ impl MerkleHash for NamespacedSha2Hasher {
 
         let mut output = NamespacedHash::with_min_and_max_ns(min_ns, max_ns);
 
-        hasher.update(left);
-        hasher.update(right);
+        hasher.update(&left.iter().copied().collect::<Vec<_>>());
+        hasher.update(&right.iter().copied().collect::<Vec<_>>());
 
         output.set_hash(hasher.finalize().as_ref());
         output
     }
 }
-
-pub const EMPTY_ROOT: NamespacedHash = NamespacedHash([
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 227, 176, 196, 66, 152, 252, 28, 20, 154, 251,
-    244, 200, 153, 111, 185, 36, 39, 174, 65, 228, 100, 155, 147, 76, 164, 149, 153, 27, 120, 82,
-    184, 85,
-]);
 
 #[derive(Debug, PartialEq, PartialOrd, Eq, Ord, Copy, Clone, Hash)]
-pub struct NamespaceId(pub [u8; NAMESPACE_ID_LEN]);
-
-impl NamespaceId {
-    pub fn is_reserved(&self) -> bool {
-        self.0 <= [0, 0, 0, 0, 0, 0, 0, 255]
-    }
-}
-
-impl Default for NamespaceId {
-    fn default() -> Self {
-        Self([0; NAMESPACE_ID_LEN])
-    }
-}
-
-impl AsRef<[u8]> for NamespaceId {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
-    }
-}
-
-#[derive(Debug, PartialEq, Clone, Eq, Hash)]
 #[cfg_attr(any(test, feature = "borsh"), derive(borsh::BorshSerialize))]
-pub struct NamespacedHash(pub [u8; NAMESPACED_HASH_LEN]);
+pub struct NamespaceId<const NS_ID_SIZE: usize>(pub [u8; NS_ID_SIZE]);
 
-#[cfg(any(test, feature = "borsh"))]
-impl borsh::BorshDeserialize for NamespacedHash {
-    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let mut out = [0u8; NAMESPACED_HASH_LEN];
-        reader.read_exact(&mut out)?;
-        Ok(NamespacedHash(out))
-    }
-}
-
-#[cfg(feature = "serde")]
-impl serde::Serialize for NamespacedHash {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::SerializeTuple;
-        let mut seq = serializer.serialize_tuple(NAMESPACED_HASH_LEN)?;
-        for elem in &self.0[..] {
-            seq.serialize_element(elem)?;
-        }
-        seq.end()
-    }
-}
-
-#[cfg(feature = "serde")]
-impl<'de> serde::Deserialize<'de> for NamespacedHash {
-    fn deserialize<D>(deserializer: D) -> Result<Self, <D as serde::Deserializer<'de>>::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        struct ArrayVisitor<T> {
-            element: std::marker::PhantomData<T>,
-        }
-
-        impl<'de, T> serde::de::Visitor<'de> for ArrayVisitor<T>
-        where
-            T: Default + Copy + serde::Deserialize<'de>,
-        {
-            type Value = [T; NAMESPACED_HASH_LEN];
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str(concat!("an array of length ", 48))
-            }
-
-            fn visit_seq<A>(self, mut seq: A) -> Result<[T; NAMESPACED_HASH_LEN], A::Error>
-            where
-                A: serde::de::SeqAccess<'de>,
-            {
-                let mut arr = [T::default(); NAMESPACED_HASH_LEN];
-                for (i, byte) in arr.iter_mut().enumerate() {
-                    *byte = seq
-                        .next_element()?
-                        .ok_or_else(|| serde::de::Error::invalid_length(i, &self))?;
-                }
-                Ok(arr)
-            }
-        }
-
-        let visitor = ArrayVisitor {
-            element: std::marker::PhantomData,
-        };
-        Ok(NamespacedHash(
-            deserializer.deserialize_tuple(NAMESPACED_HASH_LEN, visitor)?,
-        ))
-    }
-}
-
-impl Default for NamespacedHash {
+impl<const NS_ID_SIZE: usize> Default for NamespaceId<NS_ID_SIZE> {
     fn default() -> Self {
-        Self([0u8; NAMESPACED_HASH_LEN])
+        Self([0; NS_ID_SIZE])
     }
 }
 
-impl NamespacedHash {
-    pub fn with_min_and_max_ns(min_namespace: NamespaceId, max_namespace: NamespaceId) -> Self {
-        let mut out = Self([0u8; NAMESPACED_HASH_LEN]);
-        out.0[0..NAMESPACE_ID_LEN].copy_from_slice(min_namespace.as_ref());
-        out.0[NAMESPACE_ID_LEN..2 * NAMESPACE_ID_LEN].copy_from_slice(max_namespace.as_ref());
-        out
-    }
-    pub fn min_namespace(&self) -> NamespaceId {
-        let mut out = [0u8; NAMESPACE_ID_LEN];
-        out.copy_from_slice(&self.0[..NAMESPACE_ID_LEN]);
-        NamespaceId(out)
+impl<const NS_ID_SIZE: usize> NamespaceId<NS_ID_SIZE> {
+    pub const MAX_ID: NamespaceId<NS_ID_SIZE> = NamespaceId([0xff; NS_ID_SIZE]);
+    pub const MAX_RESERVED_ID: NamespaceId<NS_ID_SIZE> = {
+        let mut max_reserved = [0; NS_ID_SIZE];
+        max_reserved[NS_ID_SIZE - 1] = 255;
+        Self(max_reserved)
+    };
+
+    pub const fn max_id() -> Self {
+        Self::MAX_ID
     }
 
-    pub fn max_namespace(&self) -> NamespaceId {
-        let mut out = [0u8; NAMESPACE_ID_LEN];
-        out.copy_from_slice(&self.0[NAMESPACE_ID_LEN..2 * NAMESPACE_ID_LEN]);
-        NamespaceId(out)
-    }
-
-    fn set_hash(&mut self, hash: &[u8]) {
-        self.0[2 * NAMESPACE_ID_LEN..].copy_from_slice(hash)
-    }
-
-    pub fn empty() -> Self {
-        EMPTY_ROOT.clone()
-    }
-
-    pub fn contains(&self, namespace: NamespaceId) -> bool {
-        self.min_namespace() <= namespace
-            && self.max_namespace() >= namespace
-            && !self.is_empty_root()
-    }
-
-    pub fn is_empty_root(&self) -> bool {
-        self == &EMPTY_ROOT
-    }
-
-    pub fn hash_leaf(raw_data: impl AsRef<[u8]>, namespace: NamespaceId) -> Self {
-        let mut output = NamespacedHash::with_min_and_max_ns(namespace, namespace);
-        let mut hasher = Hasher::new_with_prefix(LEAF_DOMAIN_SEPARATOR);
-        hasher.update(namespace.as_ref());
-        hasher.update(raw_data.as_ref());
-        output.set_hash(hasher.finalize().as_ref());
-        output
+    pub fn is_reserved(&self) -> bool {
+        self <= &Self::MAX_RESERVED_ID
     }
 }
 
-impl AsRef<[u8]> for NamespacedHash {
+impl<const NS_ID_SIZE: usize> AsRef<[u8]> for NamespaceId<NS_ID_SIZE> {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
     }
@@ -252,16 +128,206 @@ impl std::fmt::Display for InvalidNamespace {
 }
 impl std::error::Error for InvalidNamespace {}
 
-impl TryFrom<&[u8]> for NamespaceId {
+impl<const NS_ID_SIZE: usize> TryFrom<&[u8]> for NamespaceId<NS_ID_SIZE> {
     type Error = InvalidNamespace;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        if value.len() != NAMESPACE_ID_LEN {
+        if value.len() != NS_ID_SIZE {
             return Err(InvalidNamespace);
         }
-        let mut out = [0u8; NAMESPACE_ID_LEN];
-        out.copy_from_slice(value);
-        Ok(Self(out))
+        Ok(Self(value.try_into().unwrap()))
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Eq, Hash)]
+#[cfg_attr(any(test, feature = "borsh"), derive(borsh::BorshSerialize))]
+pub struct NamespacedHash<const NS_ID_SIZE: usize> {
+    min_ns: NamespaceId<NS_ID_SIZE>,
+    max_ns: NamespaceId<NS_ID_SIZE>,
+    hash: [u8; HASH_LEN],
+}
+
+#[cfg(any(test, feature = "borsh"))]
+impl<const NS_ID_SIZE: usize> borsh::BorshDeserialize for NamespacedHash<NS_ID_SIZE> {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let mut min_ns = NamespaceId([0u8; NS_ID_SIZE]);
+        reader.read_exact(&mut min_ns.0)?;
+
+        let mut max_ns = NamespaceId([0u8; NS_ID_SIZE]);
+        reader.read_exact(&mut max_ns.0)?;
+
+        let mut hash = [0u8; HASH_LEN];
+        reader.read_exact(&mut hash)?;
+
+        Ok(NamespacedHash {
+            min_ns,
+            max_ns,
+            hash,
+        })
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<const NS_ID_SIZE: usize> serde::Serialize for NamespacedHash<NS_ID_SIZE> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeTuple;
+        let mut seq = serializer.serialize_tuple(NamespacedHash::<NS_ID_SIZE>::size())?;
+        for byte in self.iter() {
+            seq.serialize_element(byte)?;
+        }
+        seq.end()
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, const NS_ID_SIZE: usize> serde::Deserialize<'de> for NamespacedHash<NS_ID_SIZE> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, <D as serde::Deserializer<'de>>::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct ArrayVisitor<T, const NS_ID_SIZE: usize> {
+            element: std::marker::PhantomData<[T; NS_ID_SIZE]>,
+        }
+
+        impl<'de, T, const NS_ID_SIZE: usize> serde::de::Visitor<'de> for ArrayVisitor<T, NS_ID_SIZE>
+        where
+            T: Default + Copy + serde::Deserialize<'de>,
+        {
+            type Value = NamespacedHash<NS_ID_SIZE>;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str(&format!(
+                    "an array of length {}",
+                    NamespacedHash::<NS_ID_SIZE>::size()
+                ))
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::SeqAccess<'de>,
+            {
+                let seq: Vec<u8> = (0..NamespacedHash::<NS_ID_SIZE>::size())
+                    .map(|i| {
+                        seq.next_element()?
+                            .ok_or_else(|| serde::de::Error::invalid_length(i, &self))
+                    })
+                    .collect::<Result<_, _>>()?;
+                let ns_hash = seq
+                    .as_slice()
+                    .try_into()
+                    .map_err(|e: InvalidNamespacedHash| serde::de::Error::custom(e.to_string()))?;
+                Ok(ns_hash)
+            }
+        }
+
+        let visitor = ArrayVisitor {
+            element: std::marker::PhantomData::<[u8; NS_ID_SIZE]>,
+        };
+
+        deserializer.deserialize_tuple(NamespacedHash::<NS_ID_SIZE>::size(), visitor)
+    }
+}
+
+impl<const NS_ID_SIZE: usize> Default for NamespacedHash<NS_ID_SIZE> {
+    fn default() -> Self {
+        Self {
+            min_ns: NamespaceId::default(),
+            max_ns: NamespaceId::default(),
+            hash: [0u8; HASH_LEN],
+        }
+    }
+}
+
+impl<const NS_ID_SIZE: usize> NamespacedHash<NS_ID_SIZE> {
+    pub const EMPTY_ROOT: NamespacedHash<NS_ID_SIZE> = Self {
+        min_ns: NamespaceId([0; NS_ID_SIZE]),
+        max_ns: NamespaceId([0; NS_ID_SIZE]),
+        hash: [
+            227, 176, 196, 66, 152, 252, 28, 20, 154, 251, 244, 200, 153, 111, 185, 36, 39, 174,
+            65, 228, 100, 155, 147, 76, 164, 149, 153, 27, 120, 82, 184, 85,
+        ],
+    };
+
+    pub const fn size() -> usize {
+        2 * NS_ID_SIZE + HASH_LEN
+    }
+
+    pub fn with_min_and_max_ns(
+        min_ns: NamespaceId<NS_ID_SIZE>,
+        max_ns: NamespaceId<NS_ID_SIZE>,
+    ) -> Self {
+        Self {
+            min_ns,
+            max_ns,
+            ..Default::default()
+        }
+    }
+
+    pub fn min_namespace(&self) -> NamespaceId<NS_ID_SIZE> {
+        self.min_ns
+    }
+
+    pub fn max_namespace(&self) -> NamespaceId<NS_ID_SIZE> {
+        self.max_ns
+    }
+
+    fn set_hash(&mut self, new_hash: &[u8]) {
+        self.hash.copy_from_slice(new_hash)
+    }
+
+    pub fn contains(&self, namespace: NamespaceId<NS_ID_SIZE>) -> bool {
+        self.min_namespace() <= namespace
+            && self.max_namespace() >= namespace
+            && !self.is_empty_root()
+    }
+
+    pub fn is_empty_root(&self) -> bool {
+        self == &Self::EMPTY_ROOT
+    }
+
+    pub fn hash_leaf(raw_data: impl AsRef<[u8]>, namespace: NamespaceId<NS_ID_SIZE>) -> Self {
+        let mut output = NamespacedHash::with_min_and_max_ns(namespace, namespace);
+        let mut hasher = Hasher::new_with_prefix(LEAF_DOMAIN_SEPARATOR);
+        hasher.update(namespace.as_ref());
+        hasher.update(raw_data.as_ref());
+        output.set_hash(hasher.finalize().as_ref());
+        output
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &u8> {
+        self.min_ns
+            .0
+            .iter()
+            .chain(self.max_ns.0.iter())
+            .chain(self.hash.iter())
+    }
+}
+
+#[derive(Debug, PartialEq, Copy, Clone)]
+pub struct InvalidNamespacedHash;
+
+impl std::fmt::Display for InvalidNamespacedHash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("InvalidNamespacedHash")
+    }
+}
+impl std::error::Error for InvalidNamespacedHash {}
+
+impl<const NS_ID_SIZE: usize> TryFrom<&[u8]> for NamespacedHash<NS_ID_SIZE> {
+    type Error = InvalidNamespacedHash;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        if value.len() != NamespacedHash::<NS_ID_SIZE>::size() {
+            return Err(InvalidNamespacedHash);
+        }
+        Ok(Self {
+            min_ns: value[..NS_ID_SIZE].try_into().unwrap(),
+            max_ns: value[NS_ID_SIZE..2 * NS_ID_SIZE].try_into().unwrap(),
+            hash: value[2 * NS_ID_SIZE..].try_into().unwrap(),
+        })
     }
 }
 
@@ -273,7 +339,7 @@ mod tests {
     use borsh::ser::BorshSerialize;
     #[test]
     fn test_namespaced_hash_borsh() {
-        let hash = NamespacedHash([8u8; 48]);
+        let hash = NamespacedHash::<8>::try_from([8u8; 48].as_ref()).unwrap();
 
         let serialized = hash
             .try_to_vec()
@@ -288,11 +354,11 @@ mod tests {
     #[cfg(feature = "serde")]
     #[test]
     fn test_namespaced_hash_serde_json() {
-        let hash = NamespacedHash([8u8; 48]);
+        let hash = NamespacedHash::<8>::try_from([8u8; 48].as_ref()).unwrap();
 
         let serialized = serde_json::to_vec(&hash).expect("Serialization to vec must succeed");
 
-        let got: NamespacedHash =
+        let got: NamespacedHash<8> =
             serde_json::from_slice(&serialized[..]).expect("serialized hash is correct");
 
         assert_eq!(got, hash);
@@ -301,13 +367,13 @@ mod tests {
     #[cfg(feature = "serde")]
     #[test]
     fn test_namespaced_hash_serde_postcard() {
-        let hash = NamespacedHash([8u8; 48]);
+        let hash = NamespacedHash::<8>::try_from([8u8; 48].as_ref()).unwrap();
 
         let serialized: Vec<u8> =
             postcard::to_allocvec(&hash).expect("Serialization to vec must succeed");
         println!("{:?}", &serialized);
 
-        let got: NamespacedHash =
+        let got: NamespacedHash<8> =
             postcard::from_bytes(&serialized[..]).expect("serialized hash is correct");
 
         assert_eq!(got, hash);
