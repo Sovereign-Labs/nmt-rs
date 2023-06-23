@@ -286,6 +286,10 @@ impl<const NS_ID_SIZE: usize> NamespacedHash<NS_ID_SIZE> {
         self.max_ns
     }
 
+    pub fn hash(&self) -> [u8; HASH_LEN] {
+        self.hash
+    }
+
     fn set_hash(&mut self, new_hash: &[u8]) {
         self.hash.copy_from_slice(new_hash)
     }
