@@ -255,6 +255,18 @@ impl<const NS_ID_SIZE: usize> NamespacedHash<NS_ID_SIZE> {
         2 * NS_ID_SIZE + HASH_LEN
     }
 
+    pub const fn new(
+        min_ns: NamespaceId<NS_ID_SIZE>,
+        max_ns: NamespaceId<NS_ID_SIZE>,
+        hash: [u8; HASH_LEN],
+    ) -> Self {
+        Self {
+            min_ns,
+            max_ns,
+            hash,
+        }
+    }
+
     pub fn with_min_and_max_ns(
         min_ns: NamespaceId<NS_ID_SIZE>,
         max_ns: NamespaceId<NS_ID_SIZE>,
