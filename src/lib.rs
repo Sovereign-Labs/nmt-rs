@@ -203,7 +203,7 @@ where
     /// and are returned in that same order. Panics if the range to prove is larger than the tree's leaf array.
     ///
     /// Example: consider the following merkle tree with leaves [C, D, E, F]
-    ///```ascii
+    /// ```ascii
     ///          root
     ///        /      \
     ///       A        B

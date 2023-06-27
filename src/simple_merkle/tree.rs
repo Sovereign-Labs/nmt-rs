@@ -317,9 +317,9 @@ where
     /// Creates a range proof providing the sibling hashes required to show that a set of values really does occur in
     /// the merkle tree at some half-open range of indices. Intermediate hashes are identified by an in-order traversal
     /// and are returned in that same order. Panics if the range to prove is larger than the tree's leaf array.
-    ///     
+    ///
     /// Example: consider the following merkle tree with leaves [C, D, E, F]
-    ///```ascii
+    /// ```ascii
     ///          root
     ///        /      \
     ///       A        B
