@@ -77,8 +77,8 @@ impl<const NS_ID_SIZE: usize> MerkleHash for NamespacedSha2Hasher<NS_ID_SIZE> {
 
         let mut output = NamespacedHash::with_min_and_max_ns(min_ns, max_ns);
 
-        hasher.update(&left.iter().copied().collect::<Vec<_>>());
-        hasher.update(&right.iter().copied().collect::<Vec<_>>());
+        hasher.update(&left.iter().collect::<Vec<_>>());
+        hasher.update(&right.iter().collect::<Vec<_>>());
 
         output.set_hash(hasher.finalize().as_ref());
         output
@@ -139,7 +139,7 @@ impl<const NS_ID_SIZE: usize> TryFrom<&[u8]> for NamespaceId<NS_ID_SIZE> {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Eq, Hash)]
+#[derive(Debug, PartialEq, Copy, Clone, Eq, Hash)]
 #[cfg_attr(any(test, feature = "borsh"), derive(borsh::BorshSerialize))]
 pub struct NamespacedHash<const NS_ID_SIZE: usize> {
     min_ns: NamespaceId<NS_ID_SIZE>,
@@ -176,7 +176,7 @@ impl<const NS_ID_SIZE: usize> serde::Serialize for NamespacedHash<NS_ID_SIZE> {
         use serde::ser::SerializeTuple;
         let mut seq = serializer.serialize_tuple(NamespacedHash::<NS_ID_SIZE>::size())?;
         for byte in self.iter() {
-            seq.serialize_element(byte)?;
+            seq.serialize_element(&byte)?;
         }
         seq.end()
     }
@@ -313,12 +313,12 @@ impl<const NS_ID_SIZE: usize> NamespacedHash<NS_ID_SIZE> {
         output
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &u8> {
+    pub fn iter(&self) -> impl Iterator<Item = u8> {
         self.min_ns
             .0
-            .iter()
-            .chain(self.max_ns.0.iter())
-            .chain(self.hash.iter())
+            .into_iter()
+            .chain(self.max_ns.0.into_iter())
+            .chain(self.hash.into_iter())
     }
 }
 

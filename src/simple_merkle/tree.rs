@@ -47,12 +47,13 @@ impl<Db: PreimageDb<<M as MerkleHash>::Output>, M: MerkleHash> Default for Merkl
 
 pub trait MerkleHash: Default {
     #[cfg(not(feature = "serde"))]
-    type Output: Debug + PartialEq + Eq + Clone + Default + Hash;
+    type Output: Debug + PartialEq + Eq + Copy + Clone + Default + Hash;
 
     #[cfg(feature = "serde")]
     type Output: Debug
         + PartialEq
         + Eq
+        + Copy
         + Clone
         + Default
         + Hash
@@ -107,11 +108,11 @@ where
     }
 
     pub fn root(&mut self) -> M::Output {
-        if let Some(inner) = &self.root {
-            return inner.clone();
+        if let Some(inner) = self.root {
+            return inner;
         }
         let inner = self.compute_root(0..self.leaves.len());
-        self.root = Some(inner.clone());
+        self.root = Some(inner);
         inner
     }
 
@@ -133,10 +134,9 @@ where
             }
             1 => {
                 let leaf_with_hash = &self.leaves[leaf_range.start];
-                let root = leaf_with_hash.hash.clone();
+                let root = leaf_with_hash.hash;
                 (self.visitor)(&root);
-                self.db
-                    .put(root.clone(), Node::Leaf(leaf_with_hash.data.clone()));
+                self.db.put(root, Node::Leaf(leaf_with_hash.data.clone()));
                 root
             }
             _ => {
@@ -145,7 +145,7 @@ where
                 let right = self.compute_root(split_point..leaf_range.end);
                 let root = self.hasher.hash_nodes(&left, &right);
                 (self.visitor)(&root);
-                self.db.put(root.clone(), Node::Inner(left, right));
+                self.db.put(root, Node::Inner(left, right));
                 root
             }
         }
@@ -163,7 +163,7 @@ where
                 // If we've bottomed out, return the leaf hash
                 Node::Leaf(_) => {
                     if !range_to_prove.contains(&subtrie_range.start) {
-                        out.push(subtrie_root.clone())
+                        out.push(subtrie_root)
                     }
                 }
                 Node::Inner(l, r) => {
@@ -171,14 +171,14 @@ where
                     // If the range to prove, doesn't overlap with the left subtrie, add the left subtrie root to the proof.
                     // We're now done with the left subtrie
                     if range_to_prove.start >= split_point {
-                        out.push(l.clone())
+                        out.push(*l)
                     //  If the range of nodes to prove completely contains the left subtrie, then we don't need to recurse.
                     } else if range_to_prove.start > subtrie_range.start
                         || range_to_prove.end < split_point
                     {
                         self.build_range_proof_inner(
                             range_to_prove.clone(),
-                            l.clone(),
+                            *l,
                             subtrie_range.start..split_point,
                             out,
                         );
@@ -186,13 +186,13 @@ where
 
                     // Similarly, if the range to prove, doesn't overlap with the right subtrie, add the right subtrie root to the proof and return
                     if range_to_prove.end <= split_point {
-                        out.push(r.clone())
+                        out.push(*r)
                     } else if range_to_prove.start > split_point
                         || range_to_prove.end < subtrie_range.end
                     {
                         self.build_range_proof_inner(
                             range_to_prove,
-                            r.clone(),
+                            *r,
                             split_point..subtrie_range.end,
                             out,
                         );
@@ -208,7 +208,7 @@ where
     fn check_range_proof_inner(
         &self,
         leaves: &mut &[M::Output],
-        proof: &mut Vec<M::Output>,
+        proof: &mut &[M::Output],
         leaves_start_idx: usize,
         subtrie_size: usize,
         offset: usize,
@@ -222,10 +222,9 @@ where
             let right_subtrie_size = subtrie_size - split_point;
             // If the right subtree contains only a single node, it must be the last remaining leaf
             if right_subtrie_size == 1 {
-                leaves
+                *leaves
                     .slice_take_last()
                     .ok_or(RangeProofError::MissingLeaf)?
-                    .clone()
             } else {
                 // Recurse right
                 self.check_range_proof_inner(
@@ -239,7 +238,9 @@ where
         } else {
             // Otherwise (if the leaf range doesn't overlap with the right subtree),
             // the sibling node must have been included in the range proof
-            proof.pop().ok_or(RangeProofError::MissingProofNode)?
+            *proof
+                .slice_take_last()
+                .ok_or(RangeProofError::MissingProofNode)?
         };
 
         // Similarly, // If the leaf range overlaps with the left subtree
@@ -247,10 +248,9 @@ where
             let left_subtrie_size = split_point;
             // If the right subtree contains only a single node, it must be the last remaining leaf
             if left_subtrie_size == 1 {
-                leaves
+                *leaves
                     .slice_take_last()
                     .ok_or(RangeProofError::MissingLeaf)?
-                    .clone()
             } else {
                 // Recurse left
                 self.check_range_proof_inner(
@@ -264,7 +264,9 @@ where
         } else {
             // Otherwise (if the leaf range doesn't overlap with the right subtree),
             // the sibling node must have been included in the range proof
-            proof.pop().ok_or(RangeProofError::MissingProofNode)?
+            *proof
+                .slice_take_last()
+                .ok_or(RangeProofError::MissingProofNode)?
         };
 
         Ok(self.hasher.hash_nodes(&left, &right))
@@ -275,7 +277,7 @@ where
         &self,
         root: &M::Output,
         leaves: &[M::Output],
-        proof: &mut Vec<M::Output>,
+        proof: &[M::Output],
         leaves_start_idx: usize,
     ) -> Result<(), RangeProofError> {
         // As an optimization, the internal call doesn't recurse into subtrees of size smaller than 2
@@ -306,8 +308,13 @@ where
 
         let tree_size = compute_tree_size(num_right_siblings, leaves_start_idx + leaves.len() - 1)?;
 
-        let computed_root =
-            self.check_range_proof_inner(&mut &leaves[..], proof, leaves_start_idx, tree_size, 0)?;
+        let computed_root = self.check_range_proof_inner(
+            &mut &leaves[..],
+            &mut &proof[..],
+            leaves_start_idx,
+            tree_size,
+            0,
+        )?;
         if &computed_root == root {
             return Ok(());
         }

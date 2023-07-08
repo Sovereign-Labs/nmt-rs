@@ -1,5 +1,5 @@
 use super::{
-    db::MemDb,
+    db::NoopDb,
     error::RangeProofError,
     tree::{MerkleHash, MerkleTree},
     utils::compute_num_left_siblings,
@@ -26,19 +26,12 @@ where
 {
     /// Verify a range proof
     pub fn verify_range(
-        mut self,
+        &self,
         root: &M::Output,
         leaf_hashes: &[M::Output],
     ) -> Result<(), RangeProofError> {
-        let tree = MerkleTree::<MemDb<M::Output>, M>::new();
-
-        tree.check_range_proof(
-            root,
-            leaf_hashes,
-            &mut self.siblings,
-            self.start_idx as usize,
-        )?;
-        Ok(())
+        let tree = MerkleTree::<NoopDb, M>::new();
+        tree.check_range_proof(root, leaf_hashes, self.siblings(), self.start_idx as usize)
     }
 
     pub fn siblings(&self) -> &Vec<M::Output> {
@@ -64,10 +57,5 @@ where
             return Some(&siblings[num_left_siblings - 1]);
         }
         None
-    }
-
-    #[cfg(test)]
-    pub fn take_siblings(self) -> Vec<M::Output> {
-        self.siblings
     }
 }
