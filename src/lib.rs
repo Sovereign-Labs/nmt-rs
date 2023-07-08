@@ -451,6 +451,31 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_wrong_amount_of_leaves() {
+        let mut tree = tree_from_namespace_ids::<8>(&[1, 2, 2, 2, 3, 4, 5, 6]);
+        let namespace = ns_id_from_u64(2);
+        let proof = tree.get_namespace_proof(namespace);
+
+        let leaves = [b"leaf_1", b"leaf_2", b"leaf_3", b"leaf_4"];
+
+        for leaves in [&leaves[..], &leaves[..2]] {
+            proof
+                .verify_complete_namespace(&tree.root(), leaves, namespace)
+                .unwrap_err();
+            proof
+                .verify_range(&tree.root(), leaves, namespace)
+                .unwrap_err();
+        }
+
+        proof
+            .verify_complete_namespace(&tree.root(), &leaves[..3], namespace)
+            .unwrap();
+        proof
+            .verify_range(&tree.root(), &leaves[..3], namespace)
+            .unwrap();
+    }
+
     /// Builds a tree with n leaves, and then creates and checks proofs of all
     /// valid ranges.
     fn test_range_proof_roundtrip_with_n_leaves<const NS_ID_SIZE: usize>(n: usize) {
