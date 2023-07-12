@@ -25,21 +25,6 @@ pub type CelestiaNmt = NamespaceMerkleTree<
     CELESTIA_NS_ID_SIZE,
 >;
 
-// /// Compute the number of left siblings required for an inclusion proof of the node at the provided index
-// fn compute_num_left_siblings(node_idx: usize) -> usize {
-//     // The number of left siblings needed is the same as the number of ones in the binary
-//     // decomposition of the start index
-//     let mut num_left_siblings = 0;
-//     let mut start_idx = node_idx;
-//     while start_idx != 0 {
-//         if start_idx & 1 != 0 {
-//             num_left_siblings += 1;
-//         }
-//         start_idx >>= 1;
-//     }
-//     num_left_siblings
-// }
-
 /// Checks if a proof contains any partial namespaces
 fn check_proof_completeness<const NS_ID_SIZE: usize>(
     leaves: &[NamespacedHash<NS_ID_SIZE>],
@@ -71,32 +56,6 @@ fn check_proof_completeness<const NS_ID_SIZE: usize>(
 
     proof_type
 }
-
-// // Reconstruct the size of the tree.
-// // This trick works by interpreting the binary representation of the index of a node as a *path*
-// // to the node. If the lsb of the (remaining) path is a 1, turn right. Otherwise, turn left.
-// fn compute_tree_size(
-//     num_right_siblings: usize,
-//     index_of_last_included_leaf: usize,
-// ) -> Result<usize, RangeProofError> {
-//     // Each right sibling converts a left turn into a right turn - replacing a
-//     // zero in the path with a one.
-//     let mut index_of_final_node = index_of_last_included_leaf;
-//     let mut mask = 1;
-//     let mut remaining_right_siblings = num_right_siblings;
-//     while remaining_right_siblings > 0 {
-//         if index_of_final_node & mask == 0 {
-//             index_of_final_node |= mask;
-//             remaining_right_siblings -= 1;
-//         }
-//         mask <<= 1;
-//         // Ensure that the next iteration won't overflow on 32 bit platforms
-//         if index_of_final_node == u32::MAX as usize {
-//             return Err(RangeProofError::TreeTooLarge);
-//         }
-//     }
-//     Ok(index_of_final_node + 1)
-// }
 
 pub struct NamespaceMerkleTree<Db, M: MerkleHash, const NS_ID_SIZE: usize> {
     namespace_ranges: HashMap<NamespaceId<NS_ID_SIZE>, Range<usize>>,
@@ -276,8 +235,9 @@ where
         }
 
         // Otherwise, the namespace is within the range covered by the tree, but doesn't actually exist.
-        // To prove this, we can prove that for some index `i`, leaves[i].namespace() < namespace < leaves[i+1].namespace().
-        // Since a range proof for the range [i, i+1) includes the namespaced hash of leaf i+1,
+        // To prove this, we can prove that for some index `i`, leaves[i-1].namespace() < namespace < leaves[i].namespace().
+        // Since a range proof for the range [i, i+1) includes the namespaced hash of the left sibling
+        // of the leaf i, which must include the namespace of the leaf i-1, then
         // proving this range is sufficient to establish that the namespace doesn't exist.
         let namespace = self
             .inner
@@ -285,9 +245,9 @@ where
             .binary_search_by(|l| l.hash.min_namespace().cmp(&namespace));
 
         // The builtin binary search method returns the index where the item could be inserted while maintaining sorted order,
-        // which is the index after the leaf we want to prove
+        // which is the index of the leaf we want to prove
         let idx =
-            namespace.expect_err("tree cannot contain leaf with namespace that does not exist") - 1;
+            namespace.expect_err("tree cannot contain leaf with namespace that does not exist");
 
         let proof = self.build_range_proof(idx..idx + 1);
 
@@ -328,16 +288,16 @@ where
                 if !raw_leaves.is_empty() {
                     return Err(RangeProofError::MalformedProof);
                 }
-                // Check that the provided leaf actually precedes the namespace
-                if leaf.max_namespace() >= namespace {
+                // Check that the provided namespace actually precedes the leaf
+                if namespace >= leaf.min_namespace() {
                     return Err(RangeProofError::MalformedProof);
                 }
                 let num_left_siblings = compute_num_left_siblings(start_idx as usize);
 
-                // Check that the closest sibling actually follows the namespace
-                if siblings.len() > num_left_siblings {
-                    let leftmost_right_sibling = &siblings[num_left_siblings];
-                    if leftmost_right_sibling.min_namespace() <= namespace {
+                // Check that the namespace actually follows the closest sibling
+                if num_left_siblings > 0 {
+                    let rightmost_left_sibling = &siblings[num_left_siblings - 1];
+                    if rightmost_left_sibling.max_namespace() >= namespace {
                         return Err(RangeProofError::MalformedProof);
                     }
                 }
@@ -408,6 +368,12 @@ mod tests {
         NamespaceMerkleTree, NamespacedHash, RangeProofType, CELESTIA_NS_ID_SIZE,
     };
 
+    type DefaultNmt<const NS_ID_SIZE: usize> = NamespaceMerkleTree<
+        MemDb<NamespacedHash<NS_ID_SIZE>>,
+        NamespacedSha2Hasher<NS_ID_SIZE>,
+        NS_ID_SIZE,
+    >;
+
     fn ns_id_from_u64<const NS_ID_SIZE: usize>(val: u64) -> NamespaceId<NS_ID_SIZE> {
         // make sure the namespace id can hold the provided value
         assert!(NS_ID_SIZE >= 8);
@@ -416,20 +382,82 @@ mod tests {
         namespace
     }
 
-    /// Builds a tree with N leaves
-    fn tree_with_n_leaves<const NS_ID_SIZE: usize>(
-        n: usize,
-    ) -> NamespaceMerkleTree<
-        MemDb<NamespacedHash<NS_ID_SIZE>>,
-        NamespacedSha2Hasher<NS_ID_SIZE>,
-        NS_ID_SIZE,
-    > {
-        let mut tree = NamespaceMerkleTree::<_, _, NS_ID_SIZE>::new();
-        for x in 0..n as u64 {
-            let namespace = ns_id_from_u64(x + 1);
-            let _ = tree.push_leaf(x.to_be_bytes().as_ref(), namespace);
+    /// Builds a tree from provided namespace ids
+    fn tree_from_namespace_ids<const NS_ID_SIZE: usize>(
+        ns_ids: impl AsRef<[u64]>,
+    ) -> DefaultNmt<NS_ID_SIZE> {
+        let mut tree = DefaultNmt::new();
+        for (i, &ns_id) in ns_ids.as_ref().iter().enumerate() {
+            let data = format!("leaf_{i}");
+            let namespace = ns_id_from_u64(ns_id);
+            tree.push_leaf(data.as_bytes(), namespace)
+                .expect("Failed to push the leaf");
         }
         tree
+    }
+
+    /// Builds a tree with N leaves
+    fn tree_with_n_leaves<const NS_ID_SIZE: usize>(n: usize) -> DefaultNmt<NS_ID_SIZE> {
+        tree_from_namespace_ids((0..n as u64).collect::<Vec<_>>())
+    }
+
+    #[test]
+    fn test_absence_proof_leaf_advances_the_namespace() {
+        let mut tree = tree_from_namespace_ids::<8>(&[1, 2, 3, 4, 6, 7, 8, 9]);
+        let namespace = ns_id_from_u64(5);
+        let proof = tree.get_namespace_proof(namespace);
+        let no_leaves: &[&[u8]] = &[];
+
+        proof
+            .clone()
+            .verify_complete_namespace(&tree.root(), no_leaves, namespace)
+            .unwrap();
+
+        let NamespaceProof::AbsenceProof { leaf: Some(leaf), .. } = proof else {
+            unreachable!();
+        };
+
+        // https://github.com/celestiaorg/nmt/blob/master/docs/spec/nmt.md#verification-of-nmt-absence-proof
+        assert!(leaf.min_namespace() > namespace);
+    }
+
+    #[test]
+    fn test_absence_proof_return_err_if_leaf_doesnt_follow_rightmost_left_sibling() {
+        let mut tree = tree_from_namespace_ids::<8>(&[1, 2, 3, 4, 6, 7, 8, 9]);
+        let namespace = ns_id_from_u64(5);
+        let proof = tree.get_namespace_proof(namespace);
+        let no_leaves: &[&[u8]] = &[];
+
+        for i in [3, 4, 6, 7] {
+            let mut proof = proof.clone();
+            let NamespaceProof::AbsenceProof { leaf, .. } = &mut proof else {
+                unreachable!();
+            };
+            let data = format!("leaf_{i}").as_bytes().to_vec();
+            *leaf = Some(NamespacedHash::hash_leaf(&data, ns_id_from_u64(i)));
+            proof
+                .verify_complete_namespace(&tree.root(), no_leaves, ns_id_from_u64(2))
+                .unwrap_err();
+        }
+    }
+
+    #[test]
+    fn test_absence_proof_doesnt_include_leaf_if_namespace_is_out_of_root_ns_range() {
+        let mut tree = tree_from_namespace_ids::<8>(&[2, 3, 4, 5]);
+        for namespace in [1, 6] {
+            let namespace = ns_id_from_u64(namespace);
+            let proof = tree.get_namespace_proof(namespace);
+
+            proof
+                .clone()
+                .verify_complete_namespace(&tree.root(), &Vec::<Vec<u8>>::new(), namespace)
+                .unwrap();
+
+            assert!(matches!(
+                proof,
+                NamespaceProof::AbsenceProof { leaf: None, .. }
+            ));
+        }
     }
 
     /// Builds a tree with n leaves, and then creates and checks proofs of all
@@ -471,11 +499,7 @@ mod tests {
 
     fn test_completeness_check_impl<const NS_ID_SIZE: usize>() {
         // Build a tree with 32 leaves spread evenly across 8 namespaces
-        let mut tree = NamespaceMerkleTree::<
-            MemDb<NamespacedHash<NS_ID_SIZE>>,
-            NamespacedSha2Hasher<NS_ID_SIZE>,
-            NS_ID_SIZE,
-        >::new();
+        let mut tree = DefaultNmt::<NS_ID_SIZE>::new();
         for x in 0..32 {
             let namespace = ns_id_from_u64(x / 4);
             let _ = tree.push_leaf(x.to_be_bytes().as_ref(), namespace);
@@ -531,13 +555,7 @@ mod tests {
 
     // Try building and checking a proof of the min namespace, and the max namespace.
     // Then, add a node to the max namespace and check the max again.
-    fn test_min_and_max_ns_against<const NS_ID_SIZE: usize>(
-        tree: &mut NamespaceMerkleTree<
-            MemDb<NamespacedHash<NS_ID_SIZE>>,
-            NamespacedSha2Hasher<NS_ID_SIZE>,
-            NS_ID_SIZE,
-        >,
-    ) {
+    fn test_min_and_max_ns_against<const NS_ID_SIZE: usize>(tree: &mut DefaultNmt<NS_ID_SIZE>) {
         let root = tree.root();
         let min_namespace = NamespaceId([0; NS_ID_SIZE]);
         let max_namespace = NamespaceId([0xff; NS_ID_SIZE]);
@@ -562,11 +580,7 @@ mod tests {
     }
 
     fn test_namespace_verification_impl<const NS_ID_SIZE: usize>() {
-        let mut tree = NamespaceMerkleTree::<
-            MemDb<NamespacedHash<NS_ID_SIZE>>,
-            NamespacedSha2Hasher<NS_ID_SIZE>,
-            NS_ID_SIZE,
-        >::new();
+        let mut tree = DefaultNmt::<NS_ID_SIZE>::new();
         // Put a bunch of data in the tree
         for x in 0..33 {
             // Ensure that some namespaces are skipped, including the zero namespace
