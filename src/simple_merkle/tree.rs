@@ -208,7 +208,7 @@ where
     fn check_range_proof_inner(
         &self,
         leaves: &mut &[M::Output],
-        proof: &mut Vec<M::Output>,
+        proof: &mut &[M::Output],
         leaves_start_idx: usize,
         subtrie_size: usize,
         offset: usize,
@@ -239,7 +239,10 @@ where
         } else {
             // Otherwise (if the leaf range doesn't overlap with the right subtree),
             // the sibling node must have been included in the range proof
-            proof.pop().ok_or(RangeProofError::MissingProofNode)?
+            proof
+                .slice_take_last()
+                .ok_or(RangeProofError::MissingProofNode)?
+                .clone()
         };
 
         // Similarly, // If the leaf range overlaps with the left subtree
@@ -264,7 +267,10 @@ where
         } else {
             // Otherwise (if the leaf range doesn't overlap with the right subtree),
             // the sibling node must have been included in the range proof
-            proof.pop().ok_or(RangeProofError::MissingProofNode)?
+            proof
+                .slice_take_last()
+                .ok_or(RangeProofError::MissingProofNode)?
+                .clone()
         };
 
         Ok(self.hasher.hash_nodes(&left, &right))
@@ -275,7 +281,7 @@ where
         &self,
         root: &M::Output,
         leaves: &[M::Output],
-        proof: &mut Vec<M::Output>,
+        proof: &[M::Output],
         leaves_start_idx: usize,
     ) -> Result<(), RangeProofError> {
         // As an optimization, the internal call doesn't recurse into subtrees of size smaller than 2
@@ -306,8 +312,13 @@ where
 
         let tree_size = compute_tree_size(num_right_siblings, leaves_start_idx + leaves.len() - 1)?;
 
-        let computed_root =
-            self.check_range_proof_inner(&mut &leaves[..], proof, leaves_start_idx, tree_size, 0)?;
+        let computed_root = self.check_range_proof_inner(
+            &mut &leaves[..],
+            &mut &proof[..],
+            leaves_start_idx,
+            tree_size,
+            0,
+        )?;
         if &computed_root == root {
             return Ok(());
         }

@@ -1,5 +1,3 @@
-// #![feature(slice_take)]
-
 use std::{collections::HashMap, ops::Range};
 
 pub use nmt_proof::NamespaceProof;
@@ -28,7 +26,7 @@ pub type CelestiaNmt = NamespaceMerkleTree<
 /// Checks if a proof contains any partial namespaces
 fn check_proof_completeness<const NS_ID_SIZE: usize>(
     leaves: &[NamespacedHash<NS_ID_SIZE>],
-    proof: &Vec<NamespacedHash<NS_ID_SIZE>>,
+    proof: &[NamespacedHash<NS_ID_SIZE>],
     num_left_siblings: usize,
 ) -> RangeProofType {
     // Check if the proof is complete
@@ -117,7 +115,7 @@ where
         &self,
         root: &NamespacedHash<NS_ID_SIZE>,
         leaves: &[NamespacedHash<NS_ID_SIZE>],
-        proof: &mut Vec<NamespacedHash<NS_ID_SIZE>>,
+        proof: &[NamespacedHash<NS_ID_SIZE>],
         leaves_start_idx: usize,
     ) -> Result<RangeProofType, RangeProofError> {
         // As an optimization, the internal call doesn't recurse into subtrees of size smaller than 2
@@ -264,26 +262,18 @@ where
         root: &NamespacedHash<NS_ID_SIZE>,
         raw_leaves: &[impl AsRef<[u8]>],
         namespace: NamespaceId<NS_ID_SIZE>,
-        proof: NamespaceProof<M, NS_ID_SIZE>,
+        proof: &NamespaceProof<M, NS_ID_SIZE>,
     ) -> Result<(), RangeProofError> {
         if root.is_empty_root() && raw_leaves.is_empty() {
             return Ok(());
         }
 
         match proof {
-            NamespaceProof::AbsenceProof {
-                proof:
-                    Proof {
-                        mut siblings,
-                        start_idx,
-                    },
-                ignore_max_ns: _,
-                leaf,
-            } => {
+            NamespaceProof::AbsenceProof { leaf, .. } => {
                 if !root.contains(namespace) {
                     return Ok(());
                 }
-                let leaf = leaf.ok_or(RangeProofError::MalformedProof)?;
+                let leaf = leaf.clone().ok_or(RangeProofError::MalformedProof)?;
                 // Check that they haven't provided an absence proof for a non-empty namespace
                 if !raw_leaves.is_empty() {
                     return Err(RangeProofError::MalformedProof);
@@ -292,9 +282,10 @@ where
                 if namespace >= leaf.min_namespace() {
                     return Err(RangeProofError::MalformedProof);
                 }
-                let num_left_siblings = compute_num_left_siblings(start_idx as usize);
+                let num_left_siblings = compute_num_left_siblings(proof.start_idx() as usize);
 
                 // Check that the namespace actually follows the closest sibling
+                let siblings = proof.siblings();
                 if num_left_siblings > 0 {
                     let rightmost_left_sibling = &siblings[num_left_siblings - 1];
                     if rightmost_left_sibling.max_namespace() >= namespace {
@@ -302,17 +293,14 @@ where
                     }
                 }
                 // Then, check that the root is real
-                self.inner
-                    .check_range_proof(root, &[leaf], &mut siblings, start_idx as usize)?;
+                self.inner.check_range_proof(
+                    root,
+                    &[leaf],
+                    proof.siblings(),
+                    proof.start_idx() as usize,
+                )?;
             }
-            NamespaceProof::PresenceProof {
-                proof:
-                    Proof {
-                        mut siblings,
-                        start_idx,
-                    },
-                ignore_max_ns: _,
-            } => {
+            NamespaceProof::PresenceProof { .. } => {
                 if !root.contains(namespace) {
                     return Err(RangeProofError::TreeDoesNotContainLeaf);
                 }
@@ -320,9 +308,13 @@ where
                     .iter()
                     .map(|data| NamespacedHash::hash_leaf(data.as_ref(), namespace))
                     .collect();
-                if let RangeProofType::Partial =
-                    self.check_range_proof(root, &leaf_hashes, &mut siblings, start_idx as usize)?
-                {
+                let proof_type = self.check_range_proof(
+                    root,
+                    &leaf_hashes,
+                    proof.siblings(),
+                    proof.start_idx() as usize,
+                )?;
+                if proof_type == RangeProofType::Partial {
                     return Err(RangeProofError::MissingLeaf);
                 }
             }
@@ -409,7 +401,6 @@ mod tests {
         let no_leaves: &[&[u8]] = &[];
 
         proof
-            .clone()
             .verify_complete_namespace(&tree.root(), no_leaves, namespace)
             .unwrap();
 
@@ -470,8 +461,7 @@ mod tests {
                 let proof = tree.build_range_proof(j..i);
                 let leaf_hashes: Vec<_> =
                     tree.leaves()[j..i].iter().map(|l| l.hash.clone()).collect();
-                let res =
-                    tree.check_range_proof(&root, &leaf_hashes, &mut proof.take_siblings(), j);
+                let res = tree.check_range_proof(&root, &leaf_hashes, proof.siblings(), j);
                 if i != j {
                     dbg!(i, j, &res);
                     println!("{:?}", &leaf_hashes);
@@ -512,12 +502,8 @@ mod tests {
             let leaf_range = i..i + 4;
             let proof = tree.build_range_proof(leaf_range.clone());
 
-            let result = tree.check_range_proof(
-                &root,
-                &leaf_hashes[leaf_range],
-                &mut proof.take_siblings(),
-                i,
-            );
+            let result =
+                tree.check_range_proof(&root, &leaf_hashes[leaf_range], proof.siblings(), i);
             assert!(result.is_ok());
 
             // We've set up our tree to have four leaves in each namespace, so a
@@ -601,7 +587,7 @@ mod tests {
             };
 
             assert!(tree
-                .verify_namespace(&root, &raw_leaves[range.clone()], *namespace, proof)
+                .verify_namespace(&root, &raw_leaves[range.clone()], *namespace, &proof)
                 .is_ok());
         }
 
