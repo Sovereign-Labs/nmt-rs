@@ -139,7 +139,7 @@ impl<const NS_ID_SIZE: usize> TryFrom<&[u8]> for NamespaceId<NS_ID_SIZE> {
     }
 }
 
-#[derive(Debug, PartialEq, Copy, Clone, Eq, Hash)]
+#[derive(Debug, PartialEq, Clone, Eq, Hash)]
 #[cfg_attr(any(test, feature = "borsh"), derive(borsh::BorshSerialize))]
 pub struct NamespacedHash<const NS_ID_SIZE: usize> {
     min_ns: NamespaceId<NS_ID_SIZE>,

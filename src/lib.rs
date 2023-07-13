@@ -253,7 +253,7 @@ where
             proof,
             ignore_max_ns: self.ignore_max_ns,
         };
-        proof.convert_to_absence_proof(self.inner.leaves()[idx].hash);
+        proof.convert_to_absence_proof(self.inner.leaves()[idx].hash.clone());
         proof
     }
 
@@ -273,7 +273,7 @@ where
                 if !root.contains(namespace) {
                     return Ok(());
                 }
-                let leaf = leaf.ok_or(RangeProofError::MalformedProof)?;
+                let leaf = leaf.clone().ok_or(RangeProofError::MalformedProof)?;
                 // Check that they haven't provided an absence proof for a non-empty namespace
                 if !raw_leaves.is_empty() {
                     return Err(RangeProofError::MalformedProof);
@@ -459,7 +459,8 @@ mod tests {
         for i in 1..=n {
             for j in 0..=i {
                 let proof = tree.build_range_proof(j..i);
-                let leaf_hashes: Vec<_> = tree.leaves()[j..i].iter().map(|l| l.hash).collect();
+                let leaf_hashes: Vec<_> =
+                    tree.leaves()[j..i].iter().map(|l| l.hash.clone()).collect();
                 let res = tree.check_range_proof(&root, &leaf_hashes, proof.siblings(), j);
                 if i != j {
                     dbg!(i, j, &res);
@@ -494,7 +495,7 @@ mod tests {
             let _ = tree.push_leaf(x.to_be_bytes().as_ref(), namespace);
         }
         let root = tree.root();
-        let leaf_hashes: Vec<_> = tree.leaves().iter().map(|x| x.hash).collect();
+        let leaf_hashes: Vec<_> = tree.leaves().iter().map(|x| x.hash.clone()).collect();
 
         // For each potential range of size four, build and check a range proof
         for i in 0..=28 {
