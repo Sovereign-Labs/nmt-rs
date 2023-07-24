@@ -1,3 +1,4 @@
+use crate::maybestd::{mem, vec::Vec};
 use crate::{
     namespaced_hash::{NamespaceId, NamespaceMerkleHasher, NamespacedHash},
     simple_merkle::{
@@ -79,7 +80,7 @@ where
                 proof,
                 ignore_max_ns,
             } => {
-                let pf = std::mem::take(proof);
+                let pf = mem::take(proof);
                 *self = Self::AbsenceProof {
                     proof: pf,
                     ignore_max_ns: *ignore_max_ns,

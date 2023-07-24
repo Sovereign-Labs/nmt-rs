@@ -2,9 +2,7 @@ use super::db::{LeafWithHash, Node, PreimageDb};
 use super::error::RangeProofError;
 use super::proof::Proof;
 use super::utils::{compute_num_left_siblings, compute_tree_size};
-use std::fmt::Debug;
-use std::hash::Hash;
-use std::ops::Range;
+use crate::maybestd::{boxed::Box, fmt::Debug, hash::Hash, ops::Range, vec::Vec};
 
 /// Manually implement the method we need from #[feature(slice_take)] to
 /// allow building with stable;
@@ -47,7 +45,7 @@ impl<Db: PreimageDb<<M as MerkleHash>::Output>, M: MerkleHash> Default for Merkl
 
 pub trait MerkleHash: Default {
     #[cfg(not(feature = "serde"))]
-    type Output: Debug + PartialEq + Eq + Clone + Default + Hash;
+    type Output: Debug + PartialEq + Eq + Clone + Default + Hash + Ord;
 
     #[cfg(feature = "serde")]
     type Output: Debug
@@ -72,7 +70,7 @@ where
 {
     pub fn new() -> Self {
         Self {
-            leaves: vec![],
+            leaves: Vec::new(),
             db: Default::default(),
             root: Some(M::EMPTY_ROOT),
             visitor: Box::new(|_| {}),
@@ -82,7 +80,7 @@ where
 
     pub fn with_hasher(hasher: M) -> Self {
         Self {
-            leaves: vec![],
+            leaves: Vec::new(),
             db: Default::default(),
             root: Some(M::EMPTY_ROOT),
             visitor: Box::new(|_| {}),

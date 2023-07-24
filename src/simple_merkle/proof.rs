@@ -4,6 +4,7 @@ use super::{
     tree::{MerkleHash, MerkleTree},
     utils::compute_num_left_siblings,
 };
+use crate::maybestd::vec::Vec;
 
 /// A proof of some statement about a namespaced merkle tree.
 ///
