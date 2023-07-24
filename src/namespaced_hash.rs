@@ -1,5 +1,4 @@
-use std::marker::PhantomData;
-
+use crate::maybestd::{cmp, fmt, marker::PhantomData, vec::Vec};
 use sha2::{Digest, Sha256};
 
 use crate::simple_merkle::tree::MerkleHash;
@@ -66,13 +65,13 @@ impl<const NS_ID_SIZE: usize> MerkleHash for NamespacedSha2Hasher<NS_ID_SIZE> {
         let mut hasher = Hasher::new_with_prefix(INTERNAL_NODE_DOMAIN_SEPARATOR);
         let max_nsid = NamespaceId::<NS_ID_SIZE>::max_id();
 
-        let min_ns = std::cmp::min(left.min_namespace(), right.min_namespace());
+        let min_ns = cmp::min(left.min_namespace(), right.min_namespace());
         let max_ns = if self.ignore_max_ns && left.min_namespace() == max_nsid {
             max_nsid
         } else if self.ignore_max_ns && right.min_namespace() == max_nsid {
             left.max_namespace()
         } else {
-            std::cmp::max(left.max_namespace(), right.max_namespace())
+            cmp::max(left.max_namespace(), right.max_namespace())
         };
 
         let mut output = NamespacedHash::with_min_and_max_ns(min_ns, max_ns);
@@ -121,11 +120,13 @@ impl<const NS_ID_SIZE: usize> AsRef<[u8]> for NamespaceId<NS_ID_SIZE> {
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub struct InvalidNamespace;
 
-impl std::fmt::Display for InvalidNamespace {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for InvalidNamespace {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("InvalidNamespace")
     }
 }
+
+#[cfg(feature = "std")]
 impl std::error::Error for InvalidNamespace {}
 
 impl<const NS_ID_SIZE: usize> TryFrom<&[u8]> for NamespaceId<NS_ID_SIZE> {
@@ -139,7 +140,7 @@ impl<const NS_ID_SIZE: usize> TryFrom<&[u8]> for NamespaceId<NS_ID_SIZE> {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Eq, Hash)]
+#[derive(Debug, PartialEq, Clone, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(any(test, feature = "borsh"), derive(borsh::BorshSerialize))]
 pub struct NamespacedHash<const NS_ID_SIZE: usize> {
     min_ns: NamespaceId<NS_ID_SIZE>,
@@ -149,7 +150,9 @@ pub struct NamespacedHash<const NS_ID_SIZE: usize> {
 
 #[cfg(any(test, feature = "borsh"))]
 impl<const NS_ID_SIZE: usize> borsh::BorshDeserialize for NamespacedHash<NS_ID_SIZE> {
-    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+    fn deserialize_reader<R: borsh::maybestd::io::Read>(
+        reader: &mut R,
+    ) -> borsh::maybestd::io::Result<Self> {
         let mut min_ns = NamespaceId([0u8; NS_ID_SIZE]);
         reader.read_exact(&mut min_ns.0)?;
 
@@ -189,7 +192,7 @@ impl<'de, const NS_ID_SIZE: usize> serde::Deserialize<'de> for NamespacedHash<NS
         D: serde::Deserializer<'de>,
     {
         struct ArrayVisitor<T, const NS_ID_SIZE: usize> {
-            element: std::marker::PhantomData<[T; NS_ID_SIZE]>,
+            element: PhantomData<[T; NS_ID_SIZE]>,
         }
 
         impl<'de, T, const NS_ID_SIZE: usize> serde::de::Visitor<'de> for ArrayVisitor<T, NS_ID_SIZE>
@@ -198,8 +201,8 @@ impl<'de, const NS_ID_SIZE: usize> serde::Deserialize<'de> for NamespacedHash<NS
         {
             type Value = NamespacedHash<NS_ID_SIZE>;
 
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str(&format!(
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str(&crate::maybestd::format!(
                     "an array of length {}",
                     NamespacedHash::<NS_ID_SIZE>::size()
                 ))
@@ -218,13 +221,15 @@ impl<'de, const NS_ID_SIZE: usize> serde::Deserialize<'de> for NamespacedHash<NS
                 let ns_hash = seq
                     .as_slice()
                     .try_into()
-                    .map_err(|e: InvalidNamespacedHash| serde::de::Error::custom(e.to_string()))?;
+                    .map_err(|e: InvalidNamespacedHash| {
+                        serde::de::Error::custom(crate::maybestd::string::ToString::to_string(&e))
+                    })?;
                 Ok(ns_hash)
             }
         }
 
         let visitor = ArrayVisitor {
-            element: std::marker::PhantomData::<[u8; NS_ID_SIZE]>,
+            element: PhantomData::<[u8; NS_ID_SIZE]>,
         };
 
         deserializer.deserialize_tuple(NamespacedHash::<NS_ID_SIZE>::size(), visitor)
@@ -325,11 +330,12 @@ impl<const NS_ID_SIZE: usize> NamespacedHash<NS_ID_SIZE> {
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub struct InvalidNamespacedHash;
 
-impl std::fmt::Display for InvalidNamespacedHash {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for InvalidNamespacedHash {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("InvalidNamespacedHash")
     }
 }
+#[cfg(feature = "std")]
 impl std::error::Error for InvalidNamespacedHash {}
 
 impl<const NS_ID_SIZE: usize> TryFrom<&[u8]> for NamespacedHash<NS_ID_SIZE> {
@@ -350,9 +356,9 @@ impl<const NS_ID_SIZE: usize> TryFrom<&[u8]> for NamespacedHash<NS_ID_SIZE> {
 #[cfg(test)]
 mod tests {
     use crate::NamespacedHash;
-
     use borsh::de::BorshDeserialize;
     use borsh::ser::BorshSerialize;
+
     #[test]
     fn test_namespaced_hash_borsh() {
         let hash = NamespacedHash::<8>::try_from([8u8; 48].as_ref()).unwrap();
@@ -383,12 +389,12 @@ mod tests {
     #[cfg(feature = "serde")]
     #[test]
     fn test_namespaced_hash_serde_postcard() {
+        use crate::maybestd::vec::Vec;
+
         let hash = NamespacedHash::<8>::try_from([8u8; 48].as_ref()).unwrap();
 
         let serialized: Vec<u8> =
             postcard::to_allocvec(&hash).expect("Serialization to vec must succeed");
-        println!("{:?}", &serialized);
-
         let got: NamespacedHash<8> =
             postcard::from_bytes(&serialized[..]).expect("serialized hash is correct");
 

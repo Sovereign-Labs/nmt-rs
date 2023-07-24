@@ -1,4 +1,25 @@
-use std::{collections::HashMap, ops::Range};
+#![cfg_attr(not(feature = "std"), no_std)]
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+mod maybestd {
+    #[cfg(not(feature = "std"))]
+    pub use alloc::{boxed, collections, format, string, vec};
+    #[cfg(not(feature = "std"))]
+    pub use core::{cmp, fmt, hash, marker, mem, ops};
+    #[cfg(feature = "std")]
+    pub use std::{boxed, cmp, collections, fmt, format, hash, marker, mem, ops, string, vec};
+
+    pub mod hash_or_btree_map {
+        #[cfg(not(feature = "std"))]
+        pub use alloc::collections::btree_map::{BTreeMap as Map, Entry};
+        #[cfg(feature = "std")]
+        pub use std::collections::hash_map::{Entry, HashMap as Map};
+    }
+}
+
+use crate::maybestd::{hash_or_btree_map, ops::Range, vec::Vec};
 
 pub use nmt_proof::NamespaceProof;
 use simple_merkle::{
@@ -56,7 +77,7 @@ fn check_proof_completeness<const NS_ID_SIZE: usize>(
 }
 
 pub struct NamespaceMerkleTree<Db, M: MerkleHash, const NS_ID_SIZE: usize> {
-    namespace_ranges: HashMap<NamespaceId<NS_ID_SIZE>, Range<usize>>,
+    namespace_ranges: hash_or_btree_map::Map<NamespaceId<NS_ID_SIZE>, Range<usize>>,
     highest_ns: NamespaceId<NS_ID_SIZE>,
     ignore_max_ns: bool,
     inner: MerkleTree<Db, M>,
@@ -96,10 +117,10 @@ where
 
         let leaves_len = self.leaves().len();
         match self.namespace_ranges.entry(namespace) {
-            std::collections::hash_map::Entry::Occupied(entry) => {
+            crate::maybestd::hash_or_btree_map::Entry::Occupied(entry) => {
                 entry.into_mut().end = leaves_len;
             }
-            std::collections::hash_map::Entry::Vacant(entry) => {
+            crate::maybestd::hash_or_btree_map::Entry::Vacant(entry) => {
                 entry.insert(leaves_len - 1..leaves_len);
             }
         }
@@ -353,6 +374,7 @@ pub enum RangeProofType {
 
 #[cfg(test)]
 mod tests {
+    use crate::maybestd::{format, vec::Vec};
     use crate::{
         namespaced_hash::{NamespaceId, NamespacedSha2Hasher},
         nmt_proof::NamespaceProof,
@@ -463,8 +485,6 @@ mod tests {
                     tree.leaves()[j..i].iter().map(|l| l.hash.clone()).collect();
                 let res = tree.check_range_proof(&root, &leaf_hashes, proof.siblings(), j);
                 if i != j {
-                    dbg!(i, j, &res);
-                    println!("{:?}", &leaf_hashes);
                     assert!(res.is_ok());
                     assert!(res.unwrap() == RangeProofType::Complete)
                 } else {
@@ -519,13 +539,8 @@ mod tests {
         for nid in 0..100u64 {
             let namespace = ns_id_from_u64(nid);
             let (leaves, proof) = tree.get_namespace_with_proof(namespace);
-            println!("Poof: {:?}", &proof);
 
             let pf = proof.verify_complete_namespace(&root, &leaves, namespace);
-            if pf.is_err() {
-                dbg!(&pf, namespace);
-                println!("{:?}", &leaves);
-            }
             assert!(pf.is_ok());
         }
     }
@@ -595,13 +610,7 @@ mod tests {
         for nid in 0..100u64 {
             let namespace = ns_id_from_u64(nid);
             let (leaves, proof) = tree.get_namespace_with_proof(namespace);
-            println!("Poof: {:?}", &proof);
-
             let pf = proof.verify_complete_namespace(&root, &leaves, namespace);
-            if pf.is_err() {
-                dbg!(&pf, namespace);
-                println!("{:?}", &leaves);
-            }
             assert!(pf.is_ok());
         }
 

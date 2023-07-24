@@ -1,20 +1,32 @@
-use std::{collections::HashMap, hash::Hash};
+use crate::maybestd::{hash::Hash, vec::Vec};
+
+#[cfg(not(feature = "std"))]
+trait HashType: Eq + Hash + crate::maybestd::cmp::Ord {}
+
+#[cfg(not(feature = "std"))]
+impl<H: Eq + Hash + Ord> HashType for H {}
+
+#[cfg(feature = "std")]
+trait HashType: Eq + Hash {}
+
+#[cfg(feature = "std")]
+impl<H: Eq + Hash> HashType for H {}
 
 #[derive(Default)]
-pub struct MemDb<H>(HashMap<H, Node<H>>);
+pub struct MemDb<H>(crate::maybestd::hash_or_btree_map::Map<H, Node<H>>);
 
-impl<H: Eq + Hash> PreimageReader<H> for MemDb<H> {
+impl<H: HashType> PreimageReader<H> for MemDb<H> {
     fn get(&self, image: &H) -> Option<&Node<H>> {
         self.0.get(image)
     }
 }
-impl<H: Eq + Hash> PreimageWriter<H> for MemDb<H> {
+impl<H: HashType> PreimageWriter<H> for MemDb<H> {
     fn put(&mut self, image: H, preimage: Node<H>) {
         self.0.insert(image, preimage);
     }
 }
 
-impl<H: Default + Eq + Hash> PreimageDb<H> for MemDb<H> {}
+impl<H: Default + HashType> PreimageDb<H> for MemDb<H> {}
 
 #[derive(Clone)]
 pub struct LeafWithHash<H> {
