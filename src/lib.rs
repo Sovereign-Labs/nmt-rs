@@ -541,9 +541,6 @@ mod tests {
             let (leaves, proof) = tree.get_namespace_with_proof(namespace);
 
             let pf = proof.verify_complete_namespace(&root, &leaves, namespace);
-            if pf.is_err() {
-                panic!("{:?} {:?} {:?}", &pf, namespace, &leaves);
-            }
             assert!(pf.is_ok());
         }
     }
@@ -614,9 +611,6 @@ mod tests {
             let namespace = ns_id_from_u64(nid);
             let (leaves, proof) = tree.get_namespace_with_proof(namespace);
             let pf = proof.verify_complete_namespace(&root, &leaves, namespace);
-            if pf.is_err() {
-                panic!("{:?} {:?} {:?}", &pf, namespace, &leaves);
-            }
             assert!(pf.is_ok());
         }
 

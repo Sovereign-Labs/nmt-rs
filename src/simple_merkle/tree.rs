@@ -44,16 +44,30 @@ impl<Db: PreimageDb<<M as MerkleHash>::Output>, M: MerkleHash> Default for Merkl
 }
 
 pub trait MerkleHash: Default {
-    #[cfg(not(feature = "serde"))]
+    #[cfg(all(not(feature = "serde"), feature = "std"))]
+    type Output: Debug + PartialEq + Eq + Clone + Default + Hash;
+
+    #[cfg(all(not(feature = "serde"), not(feature = "std")))]
     type Output: Debug + PartialEq + Eq + Clone + Default + Hash + Ord;
 
-    #[cfg(feature = "serde")]
+    #[cfg(all(feature = "serde", not(feature = "std")))]
     type Output: Debug
         + PartialEq
         + Eq
         + Clone
         + Default
         + Hash
+        + serde::Serialize
+        + serde::de::DeserializeOwned;
+
+    #[cfg(all(feature = "serde", feature = "std"))]
+    type Output: Debug
+        + PartialEq
+        + Eq
+        + Clone
+        + Default
+        + Hash
+        + Ord
         + serde::Serialize
         + serde::de::DeserializeOwned;
 
