@@ -426,7 +426,10 @@ mod tests {
             .verify_complete_namespace(&tree.root(), no_leaves, namespace)
             .unwrap();
 
-        let NamespaceProof::AbsenceProof { leaf: Some(leaf), .. } = proof else {
+        let NamespaceProof::AbsenceProof {
+            leaf: Some(leaf), ..
+        } = proof
+        else {
             unreachable!();
         };
 
