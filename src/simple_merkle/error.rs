@@ -1,6 +1,7 @@
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum RangeProofError {
     NoLeavesProvided,
+    WrongAmountOfLeavesProvided,
     InvalidRoot,
     MissingLeaf,
     MissingProofNode,

@@ -41,6 +41,10 @@ where
         raw_leaves: &[impl AsRef<[u8]>],
         namespace: NamespaceId<NS_ID_SIZE>,
     ) -> Result<(), RangeProofError> {
+        if self.is_of_presence() && raw_leaves.len() != self.range_len() {
+            return Err(RangeProofError::WrongAmountOfLeavesProvided);
+        }
+
         let tree = NamespaceMerkleTree::<NoopDb, M, NS_ID_SIZE>::with_hasher(
             M::with_ignore_max_ns(self.ignores_max_ns()),
         );
@@ -57,6 +61,10 @@ where
         if self.is_of_absence() {
             return Err(RangeProofError::MalformedProof);
         };
+
+        if raw_leaves.len() != self.range_len() {
+            return Err(RangeProofError::WrongAmountOfLeavesProvided);
+        }
 
         let leaf_hashes: Vec<_> = raw_leaves
             .iter()
@@ -103,6 +111,14 @@ where
 
     pub fn start_idx(&self) -> u32 {
         self.merkle_proof().start_idx()
+    }
+
+    pub fn end_idx(&self) -> u32 {
+        self.merkle_proof().end_idx()
+    }
+
+    fn range_len(&self) -> usize {
+        self.merkle_proof().range_len()
     }
 
     pub fn leftmost_right_sibling(&self) -> Option<&NamespacedHash<NS_ID_SIZE>> {

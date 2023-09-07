@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use super::{
     db::NoopDb,
     error::RangeProofError,
@@ -18,7 +20,7 @@ use crate::maybestd::vec::Vec;
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Proof<M: MerkleHash> {
     pub siblings: Vec<M::Output>,
-    pub start_idx: u32,
+    pub range: Range<u32>,
 }
 
 impl<M> Proof<M>
@@ -31,8 +33,17 @@ where
         root: &M::Output,
         leaf_hashes: &[M::Output],
     ) -> Result<(), RangeProofError> {
+        if leaf_hashes.len() != self.range_len() {
+            return Err(RangeProofError::WrongAmountOfLeavesProvided);
+        }
+
         let tree = MerkleTree::<NoopDb, M>::new();
-        tree.check_range_proof(root, leaf_hashes, self.siblings(), self.start_idx as usize)
+        tree.check_range_proof(
+            root,
+            leaf_hashes,
+            self.siblings(),
+            self.start_idx() as usize,
+        )
     }
 
     pub fn siblings(&self) -> &Vec<M::Output> {
@@ -40,8 +51,17 @@ where
     }
 
     pub fn start_idx(&self) -> u32 {
-        self.start_idx
+        self.range.start
     }
+
+    pub fn end_idx(&self) -> u32 {
+        self.range.end
+    }
+
+    pub fn range_len(&self) -> usize {
+        self.range.end.saturating_sub(self.range.start) as usize
+    }
+
     pub fn leftmost_right_sibling(&self) -> Option<&M::Output> {
         let siblings = self.siblings();
         let num_left_siblings = compute_num_left_siblings(self.start_idx() as usize);
