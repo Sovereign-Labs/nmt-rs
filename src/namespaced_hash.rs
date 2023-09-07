@@ -322,8 +322,8 @@ impl<const NS_ID_SIZE: usize> NamespacedHash<NS_ID_SIZE> {
         self.min_ns
             .0
             .into_iter()
-            .chain(self.max_ns.0.into_iter())
-            .chain(self.hash.into_iter())
+            .chain(self.max_ns.0)
+            .chain(self.hash)
     }
 }
 
