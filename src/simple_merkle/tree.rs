@@ -20,6 +20,7 @@ impl<T> TakeLast<T> for [T] {
 
 type BoxedVisitor<M> = Box<dyn Fn(&<M as MerkleHash>::Output)>;
 
+/// Implments an RFC 6962 compatible merkle tree over an in-memory data store which maps preimages to hashes.
 pub struct MerkleTree<Db, M>
 where
     M: MerkleHash,
@@ -45,13 +46,17 @@ impl<Db: PreimageDb<<M as MerkleHash>::Output>, M: MerkleHash + Default> Default
     }
 }
 
+/// A trait for hashing data into a merkle tree
 pub trait MerkleHash {
+    /// The output of this hasher
     #[cfg(all(not(feature = "serde"), feature = "std"))]
     type Output: Debug + PartialEq + Eq + Clone + Default + Hash;
 
+    /// The output of this hasher
     #[cfg(all(not(feature = "serde"), not(feature = "std")))]
     type Output: Debug + PartialEq + Eq + Clone + Default + Hash + Ord;
 
+    /// The output of this hasher
     #[cfg(all(feature = "serde", not(feature = "std")))]
     type Output: Debug
         + PartialEq
@@ -62,6 +67,7 @@ pub trait MerkleHash {
         + serde::Serialize
         + serde::de::DeserializeOwned;
 
+    /// The output of this hasher
     #[cfg(all(feature = "serde", feature = "std"))]
     type Output: Debug
         + PartialEq
@@ -73,9 +79,12 @@ pub trait MerkleHash {
         + serde::Serialize
         + serde::de::DeserializeOwned;
 
+    /// The hash of the empty tree. This is often defined as the hash of the empty string
     const EMPTY_ROOT: Self::Output;
 
+    /// Hashes data as a "leaf" of the tree. This operation *should* be domain separated
     fn hash_leaf(&self, data: &[u8]) -> Self::Output;
+    /// Hashes two digests into one. This operation *should* be domain separated
     fn hash_nodes(&self, l: &Self::Output, r: &Self::Output) -> Self::Output;
 }
 
@@ -84,6 +93,7 @@ where
     Db: PreimageDb<M::Output>,
     M: MerkleHash + Default,
 {
+    /// Constructs an empty merkle tree with a default hasher
     pub fn new() -> Self {
         Self::with_hasher(Default::default())
     }
@@ -94,6 +104,7 @@ where
     Db: PreimageDb<M::Output>,
     M: MerkleHash,
 {
+    /// Constructs an empty merkle tree with the given hasher
     pub fn with_hasher(hasher: M) -> Self {
         Self {
             leaves: Vec::new(),
@@ -104,16 +115,19 @@ where
         }
     }
 
+    /// Appends the given leaf to the tree
     pub fn push_raw_leaf(&mut self, raw_leaf: &[u8]) {
         let leaf = LeafWithHash::with_hasher(raw_leaf.to_vec(), &self.hasher);
         self.push_leaf_with_hash(leaf);
     }
 
+    /// Appends a pre-hashed leaf to the tree
     pub fn push_leaf_with_hash(&mut self, leaf_with_hash: LeafWithHash<M>) {
         self.root = None;
         self.leaves.push(leaf_with_hash);
     }
 
+    /// Returns the root of the tree, computing it if necessary. Repeated queries return a cached result.
     pub fn root(&mut self) -> M::Output {
         if let Some(inner) = &self.root {
             return inner.clone();
@@ -123,11 +137,13 @@ where
         inner
     }
 
+    /// Returns the requested range of leaves
     pub fn get_leaves(&self, range: Range<usize>) -> Vec<Vec<u8>> {
         let leaves = &self.leaves[range];
         leaves.iter().map(|leaf| leaf.data().to_vec()).collect()
     }
 
+    /// Returns all leaves in the tree
     pub fn leaves(&self) -> &[LeafWithHash<M>] {
         &self.leaves[..]
     }
@@ -370,12 +386,14 @@ where
         }
     }
 
+    /// Fetches the requested range of leaves, along with a proof of correctness.
     pub fn get_range_with_proof(&mut self, leaf_range: Range<usize>) -> (Vec<Vec<u8>>, Proof<M>) {
         let leaves = &self.leaves[leaf_range.clone()];
         let leaves = leaves.iter().map(|leaf| leaf.data().to_vec()).collect();
         (leaves, self.build_range_proof(leaf_range))
     }
 
+    /// Fetches the leaf at the given index, along with a proof of inclusion.
     pub fn get_index_with_proof(&mut self, idx: usize) -> (Vec<u8>, Proof<M>) {
         (
             self.leaves[idx].data().to_vec(),

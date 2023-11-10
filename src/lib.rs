@@ -1,5 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
-// #![deny(missing_docs)]
+#![deny(missing_docs)]
 //! This crate implements a Namespaced Merkle Tree compatible with <https://github.com/celestiaorg/nmt>. To quote from their documentation:
 //!
 //! > A Namespaced Merkle Tree is an ordered Merkle tree that uses a modified hash function so that each node in the tree
@@ -357,13 +357,16 @@ where
                     proof.start_idx() as usize,
                 )?;
             }
-            NamespaceProof::PresenceProof { .. } => {
+            NamespaceProof::PresenceProof { ignore_max_ns, .. } => {
                 if !root.contains::<M>(namespace) {
                     return Err(RangeProofError::TreeDoesNotContainLeaf);
                 }
                 let leaf_hashes: Vec<NamespacedHash<NS_ID_SIZE>> = raw_leaves
                     .iter()
-                    .map(|data| NamespacedHash::hash_leaf(data.as_ref(), namespace))
+                    .map(|data| {
+                        M::with_ignore_max_ns(*ignore_max_ns)
+                            .hash_leaf_with_namespace(data.as_ref(), namespace)
+                    })
                     .collect();
                 let proof_type = self.check_range_proof(
                     root,
@@ -412,6 +415,7 @@ pub enum RangeProofType {
 #[cfg(test)]
 mod tests {
     use crate::maybestd::{format, vec::Vec};
+    use crate::NamespaceMerkleHasher;
     use crate::{
         namespaced_hash::{NamespaceId, NamespacedSha2Hasher},
         nmt_proof::NamespaceProof,
@@ -487,7 +491,9 @@ mod tests {
                 unreachable!();
             };
             let data = format!("leaf_{i}").as_bytes().to_vec();
-            *leaf = Some(NamespacedHash::hash_leaf(&data, ns_id_from_u64(i)));
+            *leaf = Some(
+                NamespacedSha2Hasher::default().hash_leaf_with_namespace(&data, ns_id_from_u64(i)),
+            );
             proof
                 .verify_complete_namespace(&tree.root(), no_leaves, ns_id_from_u64(2))
                 .unwrap_err();

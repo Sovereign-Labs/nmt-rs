@@ -19,7 +19,9 @@ use crate::maybestd::vec::Vec;
 )]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Proof<M: MerkleHash> {
+    /// The siblings to be used to build the path to the root.
     pub siblings: Vec<M::Output>,
+    /// The range of indices covered by the proof.
     pub range: Range<u32>,
 }
 
@@ -80,22 +82,27 @@ where
         )
     }
 
+    /// Returns the siblings provided as part of the proof.
     pub fn siblings(&self) -> &Vec<M::Output> {
         &self.siblings
     }
 
+    /// Returns the index of the first leaf covered by the proof.
     pub fn start_idx(&self) -> u32 {
         self.range.start
     }
 
+    /// Returns the index *after* the last leaf included in the proof.
     pub fn end_idx(&self) -> u32 {
         self.range.end
     }
 
+    /// Returns the length of the range covered by the proof.
     pub fn range_len(&self) -> usize {
         self.range.end.saturating_sub(self.range.start) as usize
     }
 
+    /// Returns the leftmost node to the right of the proven range, if one exists.
     pub fn leftmost_right_sibling(&self) -> Option<&M::Output> {
         let siblings = self.siblings();
         let num_left_siblings = compute_num_left_siblings(self.start_idx() as usize);
@@ -105,6 +112,7 @@ where
         None
     }
 
+    /// Returns the rightmost node to the left of the proven range, if one exists.
     pub fn rightmost_left_sibling(&self) -> Option<&M::Output> {
         let siblings = self.siblings();
         let num_left_siblings = compute_num_left_siblings(self.start_idx() as usize);

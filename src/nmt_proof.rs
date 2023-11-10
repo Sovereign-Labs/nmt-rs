@@ -82,7 +82,10 @@ where
 
         let leaf_hashes: Vec<_> = raw_leaves
             .iter()
-            .map(|data| NamespacedHash::hash_leaf(data.as_ref(), leaf_namespace))
+            .map(|data| {
+                M::with_ignore_max_ns(self.ignores_max_ns())
+                    .hash_leaf_with_namespace(data.as_ref(), leaf_namespace)
+            })
             .collect();
         let tree = NamespaceMerkleTree::<NoopDb, M, NS_ID_SIZE>::with_hasher(
             M::with_ignore_max_ns(self.ignores_max_ns()),

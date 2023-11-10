@@ -39,7 +39,12 @@ impl<const NS_ID_SIZE: usize> NamespaceMerkleHasher<NS_ID_SIZE>
         data: &[u8],
         namespace: NamespaceId<NS_ID_SIZE>,
     ) -> <Self as MerkleHash>::Output {
-        NamespacedHash::hash_leaf(data, namespace)
+        let mut output = NamespacedHash::with_min_and_max_ns(namespace, namespace);
+        let mut hasher = Sha256::new_with_prefix(LEAF_DOMAIN_SEPARATOR);
+        hasher.update(namespace.as_ref());
+        hasher.update(data.as_ref());
+        output.set_hash(hasher.finalize().as_ref());
+        output
     }
 }
 
@@ -303,6 +308,7 @@ impl<const NS_ID_SIZE: usize> NamespacedHash<NS_ID_SIZE> {
         2 * NS_ID_SIZE + HASH_LEN
     }
 
+    /// Construct a new namespaced hash from the provided components
     pub const fn new(
         min_ns: NamespaceId<NS_ID_SIZE>,
         max_ns: NamespaceId<NS_ID_SIZE>,
@@ -315,6 +321,7 @@ impl<const NS_ID_SIZE: usize> NamespacedHash<NS_ID_SIZE> {
         }
     }
 
+    /// Construct a namespaced hash with the provided namespace range and the zero hash
     pub fn with_min_and_max_ns(
         min_ns: NamespaceId<NS_ID_SIZE>,
         max_ns: NamespaceId<NS_ID_SIZE>,
@@ -326,14 +333,17 @@ impl<const NS_ID_SIZE: usize> NamespacedHash<NS_ID_SIZE> {
         }
     }
 
+    /// Returns the min namespace id of the hash
     pub fn min_namespace(&self) -> NamespaceId<NS_ID_SIZE> {
         self.min_ns
     }
 
+    /// Returns the max namespace id of the hash
     pub fn max_namespace(&self) -> NamespaceId<NS_ID_SIZE> {
         self.max_ns
     }
 
+    /// Returns the hash without the namespace range
     pub fn hash(&self) -> [u8; HASH_LEN] {
         self.hash
     }
@@ -342,6 +352,7 @@ impl<const NS_ID_SIZE: usize> NamespacedHash<NS_ID_SIZE> {
         self.hash.copy_from_slice(new_hash)
     }
 
+    /// Check if the given hash includes the provided namespace under the given hasher
     pub fn contains<M: NamespaceMerkleHasher<NS_ID_SIZE, Output = Self>>(
         &self,
         namespace: NamespaceId<NS_ID_SIZE>,
@@ -351,19 +362,12 @@ impl<const NS_ID_SIZE: usize> NamespacedHash<NS_ID_SIZE> {
             && !self.is_empty_root::<M>()
     }
 
+    /// Check if the hash is the empty root under the given hasher
     pub fn is_empty_root<M: NamespaceMerkleHasher<NS_ID_SIZE, Output = Self>>(&self) -> bool {
         self == &M::EMPTY_ROOT
     }
 
-    pub fn hash_leaf(raw_data: impl AsRef<[u8]>, namespace: NamespaceId<NS_ID_SIZE>) -> Self {
-        let mut output = NamespacedHash::with_min_and_max_ns(namespace, namespace);
-        let mut hasher = DefaultHasher::new_with_prefix(LEAF_DOMAIN_SEPARATOR);
-        hasher.update(namespace.as_ref());
-        hasher.update(raw_data.as_ref());
-        output.set_hash(hasher.finalize().as_ref());
-        output
-    }
-
+    /// Returns an iterator of the bytes of the namespaced hash
     pub fn iter(&self) -> impl Iterator<Item = u8> {
         self.min_ns
             .0
@@ -373,6 +377,7 @@ impl<const NS_ID_SIZE: usize> NamespacedHash<NS_ID_SIZE> {
     }
 }
 
+/// The error returned when failing to convert a slice to a namespaced hash
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub struct InvalidNamespacedHash;
 
