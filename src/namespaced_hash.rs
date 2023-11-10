@@ -60,7 +60,8 @@ impl<const NS_ID_SIZE: usize> Default for NamespacedSha2Hasher<NS_ID_SIZE> {
     }
 }
 
-/// An addon for
+/// An extension of [`MerkleHash`] indicating the the hasher is namespace aware. This allows for the creation of
+/// namespaced merkle trees and namespaced merkle proofs.
 pub trait NamespaceMerkleHasher<const NS_ID_SIZE: usize>: MerkleHash {
     /// Create a new hasher which ignores the max namespace
     fn with_ignore_max_ns(ignore_max_ns: bool) -> Self;
