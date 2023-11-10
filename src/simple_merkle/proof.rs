@@ -12,7 +12,7 @@ use crate::maybestd::vec::Vec;
 ///
 /// This proof may prove the presence of some set of leaves, or the
 /// absence of a particular namespace
-#[derive(Debug, PartialEq, Clone, Default)]
+#[derive(Debug, PartialEq, Clone)]
 #[cfg_attr(
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
@@ -23,9 +23,18 @@ pub struct Proof<M: MerkleHash> {
     pub range: Range<u32>,
 }
 
+impl<M: MerkleHash> Default for Proof<M> {
+    fn default() -> Self {
+        Self {
+            siblings: Default::default(),
+            range: Default::default(),
+        }
+    }
+}
+
 impl<M> Proof<M>
 where
-    M: MerkleHash,
+    M: MerkleHash + Default,
 {
     /// Verify a range proof
     pub fn verify_range(
@@ -38,6 +47,31 @@ where
         }
 
         let tree = MerkleTree::<NoopDb, M>::new();
+        tree.check_range_proof(
+            root,
+            leaf_hashes,
+            self.siblings(),
+            self.start_idx() as usize,
+        )
+    }
+}
+
+impl<M> Proof<M>
+where
+    M: MerkleHash,
+{
+    /// Verify a range proof
+    pub fn verify_range_with_hasher(
+        &self,
+        root: &M::Output,
+        leaf_hashes: &[M::Output],
+        hasher: M,
+    ) -> Result<(), RangeProofError> {
+        if leaf_hashes.len() != self.range_len() {
+            return Err(RangeProofError::WrongAmountOfLeavesProvided);
+        }
+
+        let tree = MerkleTree::<NoopDb, M>::with_hasher(hasher);
         tree.check_range_proof(
             root,
             leaf_hashes,

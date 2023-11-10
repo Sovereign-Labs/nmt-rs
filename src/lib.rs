@@ -1,4 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+// #![deny(missing_docs)]
 //! This crate implements a Namespaced Merkle Tree compatible with <https://github.com/celestiaorg/nmt>. To quote from their documentation:
 //!
 //! > A Namespaced Merkle Tree is an ordered Merkle tree that uses a modified hash function so that each node in the tree
@@ -98,12 +99,18 @@ pub struct NamespaceMerkleTree<Db, M: MerkleHash, const NS_ID_SIZE: usize> {
 impl<Db, M, const NS_ID_SIZE: usize> NamespaceMerkleTree<Db, M, NS_ID_SIZE>
 where
     Db: PreimageDb<M::Output>,
-    M: NamespaceMerkleHasher<NS_ID_SIZE, Output = NamespacedHash<NS_ID_SIZE>>,
+    M: NamespaceMerkleHasher<NS_ID_SIZE, Output = NamespacedHash<NS_ID_SIZE>> + Default,
 {
     pub fn new() -> Self {
         Default::default()
     }
+}
 
+impl<Db, M, const NS_ID_SIZE: usize> NamespaceMerkleTree<Db, M, NS_ID_SIZE>
+where
+    Db: PreimageDb<M::Output>,
+    M: NamespaceMerkleHasher<NS_ID_SIZE, Output = NamespacedHash<NS_ID_SIZE>>,
+{
     pub fn with_hasher(hasher: M) -> Self {
         Self {
             namespace_ranges: Default::default(),
@@ -122,7 +129,8 @@ where
         if namespace < self.highest_ns {
             return Err("Leaves' namespaces should be inserted in ascending order");
         }
-        let leaf = LeafWithHash::new_with_namespace(raw_data.to_vec(), namespace);
+        let leaf =
+            LeafWithHash::new_with_namespace(raw_data.to_vec(), namespace, self.ignore_max_ns);
         self.highest_ns = namespace;
         self.inner.push_leaf_with_hash(leaf);
 
@@ -305,14 +313,20 @@ where
                 if !root.contains(namespace) {
                     return Ok(());
                 }
-                let leaf = leaf.clone().ok_or(RangeProofError::MalformedProof)?;
+                let leaf = leaf.clone().ok_or(RangeProofError::MalformedProof(
+                    "Absence proof was inside tree range but did not contain a leaf",
+                ))?;
                 // Check that they haven't provided an absence proof for a non-empty namespace
                 if !raw_leaves.is_empty() {
-                    return Err(RangeProofError::MalformedProof);
+                    return Err(RangeProofError::MalformedProof(
+                        "provided an absence proof for a non-empty namespace",
+                    ));
                 }
                 // Check that the provided namespace actually precedes the leaf
                 if namespace >= leaf.min_namespace() {
-                    return Err(RangeProofError::MalformedProof);
+                    return Err(RangeProofError::MalformedProof(
+                        "provided leaf must have namespace greater than the namespace which is being proven absent",
+                    ));
                 }
                 let num_left_siblings = compute_num_left_siblings(proof.start_idx() as usize);
 
@@ -321,7 +335,7 @@ where
                 if num_left_siblings > 0 {
                     let rightmost_left_sibling = &siblings[num_left_siblings - 1];
                     if rightmost_left_sibling.max_namespace() >= namespace {
-                        return Err(RangeProofError::MalformedProof);
+                        return Err(RangeProofError::MalformedProof("proven namespace must be greater than the namespace of the rightmost left sibling"));
                     }
                 }
                 // Then, check that the root is real
@@ -358,7 +372,7 @@ where
 impl<Db, M, const NS_ID_SIZE: usize> Default for NamespaceMerkleTree<Db, M, NS_ID_SIZE>
 where
     Db: PreimageDb<M::Output>,
-    M: MerkleHash,
+    M: MerkleHash + Default,
 {
     fn default() -> Self {
         Self {

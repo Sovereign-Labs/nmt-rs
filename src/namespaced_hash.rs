@@ -2,12 +2,17 @@ use crate::maybestd::{cmp, fmt, marker::PhantomData, vec::Vec};
 use sha2::{Digest, Sha256};
 
 use crate::simple_merkle::tree::MerkleHash;
+/// The length of a hash in bytes
 pub const HASH_LEN: usize = 32;
-pub type Hasher = Sha256;
+/// The default hasher. Currently sha256
+pub type DefaultHasher = Sha256;
 
+/// A domain separator indicating that a node is a leaf
 pub const LEAF_DOMAIN_SEPARATOR: [u8; 1] = [0u8];
+/// A domain separator indicating that a node is internal
 pub const INTERNAL_NODE_DOMAIN_SEPARATOR: [u8; 1] = [1u8];
 
+/// A sha256 hasher which also supports namespacing
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NamespacedSha2Hasher<const NS_ID_SIZE: usize> {
@@ -30,6 +35,7 @@ impl<const NS_ID_SIZE: usize> NamespaceMerkleHasher<NS_ID_SIZE>
     }
 
     fn hash_leaf_with_namespace(
+        &self,
         data: &[u8],
         namespace: NamespaceId<NS_ID_SIZE>,
     ) -> <Self as MerkleHash>::Output {
@@ -37,6 +43,9 @@ impl<const NS_ID_SIZE: usize> NamespaceMerkleHasher<NS_ID_SIZE>
     }
 }
 
+// For tests, we add a default constructor which ignores the max namespace.
+// For actual use, this default be set at the tree level, not the hasher level.
+#[cfg(test)]
 impl<const NS_ID_SIZE: usize> Default for NamespacedSha2Hasher<NS_ID_SIZE> {
     fn default() -> Self {
         Self {
@@ -46,10 +55,12 @@ impl<const NS_ID_SIZE: usize> Default for NamespacedSha2Hasher<NS_ID_SIZE> {
     }
 }
 
+/// An addon for
 pub trait NamespaceMerkleHasher<const NS_ID_SIZE: usize>: MerkleHash {
     fn with_ignore_max_ns(ignore_max_ns: bool) -> Self;
     fn ignores_max_ns(&self) -> bool;
     fn hash_leaf_with_namespace(
+        &self,
         data: &[u8],
         namespace: NamespaceId<NS_ID_SIZE>,
     ) -> <Self as MerkleHash>::Output;
@@ -65,7 +76,7 @@ impl<const NS_ID_SIZE: usize> MerkleHash for NamespacedSha2Hasher<NS_ID_SIZE> {
         let namespace = NamespaceId(namespace_bytes);
 
         let mut output = NamespacedHash::with_min_and_max_ns(namespace, namespace);
-        let mut hasher = Hasher::new_with_prefix(LEAF_DOMAIN_SEPARATOR);
+        let mut hasher = DefaultHasher::new_with_prefix(LEAF_DOMAIN_SEPARATOR);
         hasher.update(data.as_ref());
         output.set_hash(hasher.finalize().as_ref());
         output
@@ -75,7 +86,7 @@ impl<const NS_ID_SIZE: usize> MerkleHash for NamespacedSha2Hasher<NS_ID_SIZE> {
         if left.max_namespace() > right.min_namespace() {
             panic!("Invalid nodes: left max namespace must be <= right min namespace")
         }
-        let mut hasher = Hasher::new_with_prefix(INTERNAL_NODE_DOMAIN_SEPARATOR);
+        let mut hasher = DefaultHasher::new_with_prefix(INTERNAL_NODE_DOMAIN_SEPARATOR);
         let max_nsid = NamespaceId::<NS_ID_SIZE>::max_id();
 
         let min_ns = cmp::min(left.min_namespace(), right.min_namespace());
@@ -324,7 +335,7 @@ impl<const NS_ID_SIZE: usize> NamespacedHash<NS_ID_SIZE> {
 
     pub fn hash_leaf(raw_data: impl AsRef<[u8]>, namespace: NamespaceId<NS_ID_SIZE>) -> Self {
         let mut output = NamespacedHash::with_min_and_max_ns(namespace, namespace);
-        let mut hasher = Hasher::new_with_prefix(LEAF_DOMAIN_SEPARATOR);
+        let mut hasher = DefaultHasher::new_with_prefix(LEAF_DOMAIN_SEPARATOR);
         hasher.update(namespace.as_ref());
         hasher.update(raw_data.as_ref());
         output.set_hash(hasher.finalize().as_ref());

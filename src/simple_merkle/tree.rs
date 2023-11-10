@@ -31,7 +31,9 @@ where
     hasher: M,
 }
 
-impl<Db: PreimageDb<<M as MerkleHash>::Output>, M: MerkleHash> Default for MerkleTree<Db, M> {
+impl<Db: PreimageDb<<M as MerkleHash>::Output>, M: MerkleHash + Default> Default
+    for MerkleTree<Db, M>
+{
     fn default() -> Self {
         Self {
             leaves: Default::default(),
@@ -43,7 +45,7 @@ impl<Db: PreimageDb<<M as MerkleHash>::Output>, M: MerkleHash> Default for Merkl
     }
 }
 
-pub trait MerkleHash: Default {
+pub trait MerkleHash {
     #[cfg(all(not(feature = "serde"), feature = "std"))]
     type Output: Debug + PartialEq + Eq + Clone + Default + Hash;
 
@@ -80,18 +82,18 @@ pub trait MerkleHash: Default {
 impl<Db, M> MerkleTree<Db, M>
 where
     Db: PreimageDb<M::Output>,
-    M: MerkleHash,
+    M: MerkleHash + Default,
 {
     pub fn new() -> Self {
-        Self {
-            leaves: Vec::new(),
-            db: Default::default(),
-            root: Some(M::EMPTY_ROOT),
-            visitor: Box::new(|_| {}),
-            hasher: M::default(),
-        }
+        Self::with_hasher(Default::default())
     }
+}
 
+impl<Db, M> MerkleTree<Db, M>
+where
+    Db: PreimageDb<M::Output>,
+    M: MerkleHash,
+{
     pub fn with_hasher(hasher: M) -> Self {
         Self {
             leaves: Vec::new(),
@@ -103,7 +105,7 @@ where
     }
 
     pub fn push_raw_leaf(&mut self, raw_leaf: &[u8]) {
-        let leaf = LeafWithHash::new(raw_leaf.to_vec());
+        let leaf = LeafWithHash::with_hasher(raw_leaf.to_vec(), &self.hasher);
         self.push_leaf_with_hash(leaf);
     }
 
