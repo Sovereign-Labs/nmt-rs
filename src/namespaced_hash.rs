@@ -293,16 +293,6 @@ impl<const NS_ID_SIZE: usize> Default for NamespacedHash<NS_ID_SIZE> {
 }
 
 impl<const NS_ID_SIZE: usize> NamespacedHash<NS_ID_SIZE> {
-    // /// The root of the empty merkle tree
-    // pub const EMPTY_ROOT: NamespacedHash<NS_ID_SIZE> = Self {
-    //     min_ns: NamespaceId([0; NS_ID_SIZE]),
-    //     max_ns: NamespaceId([0; NS_ID_SIZE]),
-    //     hash: [
-    //         227, 176, 196, 66, 152, 252, 28, 20, 154, 251, 244, 200, 153, 111, 185, 36, 39, 174,
-    //         65, 228, 100, 155, 147, 76, 164, 149, 153, 27, 120, 82, 184, 85,
-    //     ],
-    // };
-
     /// Returns the size of the hash in bytes
     pub const fn size() -> usize {
         2 * NS_ID_SIZE + HASH_LEN
