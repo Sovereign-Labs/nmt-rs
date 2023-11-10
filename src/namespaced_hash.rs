@@ -57,8 +57,11 @@ impl<const NS_ID_SIZE: usize> Default for NamespacedSha2Hasher<NS_ID_SIZE> {
 
 /// An addon for
 pub trait NamespaceMerkleHasher<const NS_ID_SIZE: usize>: MerkleHash {
+    /// Create a new hasher which ignores the max namespace
     fn with_ignore_max_ns(ignore_max_ns: bool) -> Self;
+    /// Check whether the hasher ignores the max namespace
     fn ignores_max_ns(&self) -> bool;
+    /// Hash the given data and namespace
     fn hash_leaf_with_namespace(
         &self,
         data: &[u8],
@@ -69,7 +72,14 @@ pub trait NamespaceMerkleHasher<const NS_ID_SIZE: usize>: MerkleHash {
 impl<const NS_ID_SIZE: usize> MerkleHash for NamespacedSha2Hasher<NS_ID_SIZE> {
     type Output = NamespacedHash<NS_ID_SIZE>;
 
-    const EMPTY_ROOT: Self::Output = NamespacedHash::EMPTY_ROOT;
+    const EMPTY_ROOT: NamespacedHash<NS_ID_SIZE> = NamespacedHash {
+        min_ns: NamespaceId([0; NS_ID_SIZE]),
+        max_ns: NamespaceId([0; NS_ID_SIZE]),
+        hash: [
+            227, 176, 196, 66, 152, 252, 28, 20, 154, 251, 244, 200, 153, 111, 185, 36, 39, 174,
+            65, 228, 100, 155, 147, 76, 164, 149, 153, 27, 120, 82, 184, 85,
+        ],
+    };
 
     fn hash_leaf(&self, data: &[u8]) -> Self::Output {
         let namespace_bytes = data[..NS_ID_SIZE].try_into().expect("Leaf of invalid size");
@@ -108,6 +118,7 @@ impl<const NS_ID_SIZE: usize> MerkleHash for NamespacedSha2Hasher<NS_ID_SIZE> {
     }
 }
 
+/// A namespace identifier
 #[derive(Debug, PartialEq, PartialOrd, Eq, Ord, Copy, Clone, Hash)]
 #[cfg_attr(any(test, feature = "borsh"), derive(borsh::BorshSerialize))]
 pub struct NamespaceId<const NS_ID_SIZE: usize>(pub [u8; NS_ID_SIZE]);
@@ -119,19 +130,23 @@ impl<const NS_ID_SIZE: usize> Default for NamespaceId<NS_ID_SIZE> {
 }
 
 impl<const NS_ID_SIZE: usize> NamespaceId<NS_ID_SIZE> {
+    /// The maximum possible namespace id
     pub const MAX_ID: NamespaceId<NS_ID_SIZE> = NamespaceId([0xff; NS_ID_SIZE]);
-    pub const MAX_RESERVED_ID: NamespaceId<NS_ID_SIZE> = {
+    /// In celestia, 256 namespaces are reserved for "system" data. This is the maximum reserved namespace.
+    pub const MAX_RESERVED_ID_ON_CELESTIA: NamespaceId<NS_ID_SIZE> = {
         let mut max_reserved = [0; NS_ID_SIZE];
         max_reserved[NS_ID_SIZE - 1] = 255;
         Self(max_reserved)
     };
 
+    /// Returns maximum possible namespace id
     pub const fn max_id() -> Self {
         Self::MAX_ID
     }
 
-    pub fn is_reserved(&self) -> bool {
-        self <= &Self::MAX_RESERVED_ID
+    /// Indicates whether the namespace is reserved for system data on Celestia.
+    pub fn is_reserved_on_celestia(&self) -> bool {
+        self <= &Self::MAX_RESERVED_ID_ON_CELESTIA
     }
 }
 
@@ -141,6 +156,7 @@ impl<const NS_ID_SIZE: usize> AsRef<[u8]> for NamespaceId<NS_ID_SIZE> {
     }
 }
 
+/// An error indicating that a namespace is invalid
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub struct InvalidNamespace;
 
@@ -164,6 +180,7 @@ impl<const NS_ID_SIZE: usize> TryFrom<&[u8]> for NamespaceId<NS_ID_SIZE> {
     }
 }
 
+/// A hash of some data, together with a namespace range
 #[derive(Debug, PartialEq, Clone, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(any(test, feature = "borsh"), derive(borsh::BorshSerialize))]
 pub struct NamespacedHash<const NS_ID_SIZE: usize> {
@@ -271,15 +288,17 @@ impl<const NS_ID_SIZE: usize> Default for NamespacedHash<NS_ID_SIZE> {
 }
 
 impl<const NS_ID_SIZE: usize> NamespacedHash<NS_ID_SIZE> {
-    pub const EMPTY_ROOT: NamespacedHash<NS_ID_SIZE> = Self {
-        min_ns: NamespaceId([0; NS_ID_SIZE]),
-        max_ns: NamespaceId([0; NS_ID_SIZE]),
-        hash: [
-            227, 176, 196, 66, 152, 252, 28, 20, 154, 251, 244, 200, 153, 111, 185, 36, 39, 174,
-            65, 228, 100, 155, 147, 76, 164, 149, 153, 27, 120, 82, 184, 85,
-        ],
-    };
+    // /// The root of the empty merkle tree
+    // pub const EMPTY_ROOT: NamespacedHash<NS_ID_SIZE> = Self {
+    //     min_ns: NamespaceId([0; NS_ID_SIZE]),
+    //     max_ns: NamespaceId([0; NS_ID_SIZE]),
+    //     hash: [
+    //         227, 176, 196, 66, 152, 252, 28, 20, 154, 251, 244, 200, 153, 111, 185, 36, 39, 174,
+    //         65, 228, 100, 155, 147, 76, 164, 149, 153, 27, 120, 82, 184, 85,
+    //     ],
+    // };
 
+    /// Returns the size of the hash in bytes
     pub const fn size() -> usize {
         2 * NS_ID_SIZE + HASH_LEN
     }
@@ -323,14 +342,17 @@ impl<const NS_ID_SIZE: usize> NamespacedHash<NS_ID_SIZE> {
         self.hash.copy_from_slice(new_hash)
     }
 
-    pub fn contains(&self, namespace: NamespaceId<NS_ID_SIZE>) -> bool {
+    pub fn contains<M: NamespaceMerkleHasher<NS_ID_SIZE, Output = Self>>(
+        &self,
+        namespace: NamespaceId<NS_ID_SIZE>,
+    ) -> bool {
         self.min_namespace() <= namespace
             && self.max_namespace() >= namespace
-            && !self.is_empty_root()
+            && !self.is_empty_root::<M>()
     }
 
-    pub fn is_empty_root(&self) -> bool {
-        self == &Self::EMPTY_ROOT
+    pub fn is_empty_root<M: NamespaceMerkleHasher<NS_ID_SIZE, Output = Self>>(&self) -> bool {
+        self == &M::EMPTY_ROOT
     }
 
     pub fn hash_leaf(raw_data: impl AsRef<[u8]>, namespace: NamespaceId<NS_ID_SIZE>) -> Self {
