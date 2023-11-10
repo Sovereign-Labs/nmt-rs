@@ -1,4 +1,16 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+//! This crate implements a Namespaced Merkle Tree compatible with <https://github.com/celestiaorg/nmt>. To quote from their documentation:
+//!
+//! > A Namespaced Merkle Tree is an ordered Merkle tree that uses a modified hash function so that each node in the tree
+//! includes the range of namespaces of the messages in all of the descendants of each node. The leafs in the tree are
+//! ordered by the namespace identifiers of the messages. In a namespaced Merkle tree, each non-leaf node in the tree contains
+//! the lowest and highest namespace identifiers found in all the leaf nodes that are descendants of the non-leaf node, in addition
+//! to the hash of the concatenation of the children of the node. This enables Merkle inclusion proofs to be created that prove to
+//! a verifier that all the elements of the tree for a specific namespace have been included in a Merkle inclusion proof.
+//!
+//! > The concept was first introduced by [@musalbas](https://github.com/musalbas) in the [LazyLedger academic paper](https://arxiv.org/abs/1905.09274).
+//!
+//! This implementation was developed independently by Sovereign Labs, and is not endorsed by the Celestia foundation.
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;
@@ -86,7 +98,7 @@ pub struct NamespaceMerkleTree<Db, M: MerkleHash, const NS_ID_SIZE: usize> {
 impl<Db, M, const NS_ID_SIZE: usize> NamespaceMerkleTree<Db, M, NS_ID_SIZE>
 where
     Db: PreimageDb<M::Output>,
-    M: NamespaceMerkleHasher<Output = NamespacedHash<NS_ID_SIZE>>,
+    M: NamespaceMerkleHasher<NS_ID_SIZE, Output = NamespacedHash<NS_ID_SIZE>>,
 {
     pub fn new() -> Self {
         Default::default()
@@ -106,14 +118,13 @@ where
         raw_data: &[u8],
         namespace: NamespaceId<NS_ID_SIZE>,
     ) -> Result<(), &'static str> {
-        let hash = NamespacedHash::hash_leaf(raw_data, namespace);
         // Force leaves to be pushed in order
         if namespace < self.highest_ns {
             return Err("Leaves' namespaces should be inserted in ascending order");
         }
+        let leaf = LeafWithHash::new_with_namespace(raw_data.to_vec(), namespace);
         self.highest_ns = namespace;
-        self.inner
-            .push_leaf_with_hash_unchecked(raw_data.to_vec(), hash);
+        self.inner.push_leaf_with_hash(leaf);
 
         let leaves_len = self.leaves().len();
         match self.namespace_ranges.entry(namespace) {
@@ -228,7 +239,7 @@ where
         (leaves, self.get_namespace_proof(namespace))
     }
 
-    pub fn leaves(&self) -> &[LeafWithHash<NamespacedHash<NS_ID_SIZE>>] {
+    pub fn leaves(&self) -> &[LeafWithHash<M>] {
         self.inner.leaves()
     }
 
@@ -261,7 +272,7 @@ where
         let namespace = self
             .inner
             .leaves()
-            .binary_search_by(|l| l.hash.min_namespace().cmp(&namespace));
+            .binary_search_by(|l| l.hash().min_namespace().cmp(&namespace));
 
         // The builtin binary search method returns the index where the item could be inserted while maintaining sorted order,
         // which is the index of the leaf we want to prove
@@ -274,7 +285,7 @@ where
             proof,
             ignore_max_ns: self.ignore_max_ns,
         };
-        proof.convert_to_absence_proof(self.inner.leaves()[idx].hash.clone());
+        proof.convert_to_absence_proof(self.inner.leaves()[idx].hash().clone());
         proof
     }
 
@@ -509,8 +520,10 @@ mod tests {
         for i in 1..=n {
             for j in 0..=i {
                 let proof = tree.build_range_proof(j..i);
-                let leaf_hashes: Vec<_> =
-                    tree.leaves()[j..i].iter().map(|l| l.hash.clone()).collect();
+                let leaf_hashes: Vec<_> = tree.leaves()[j..i]
+                    .iter()
+                    .map(|l| l.hash().clone())
+                    .collect();
                 let res = tree.check_range_proof(&root, &leaf_hashes, proof.siblings(), j);
                 if i != j {
                     assert!(res.is_ok());
@@ -543,7 +556,7 @@ mod tests {
             let _ = tree.push_leaf(x.to_be_bytes().as_ref(), namespace);
         }
         let root = tree.root();
-        let leaf_hashes: Vec<_> = tree.leaves().iter().map(|x| x.hash.clone()).collect();
+        let leaf_hashes: Vec<_> = tree.leaves().iter().map(|x| x.hash().clone()).collect();
 
         // For each potential range of size four, build and check a range proof
         for i in 0..=28 {
@@ -617,7 +630,7 @@ mod tests {
             let _ = tree.push_leaf(x.to_be_bytes().as_ref(), namespace);
         }
         let root = tree.root();
-        let raw_leaves: Vec<Vec<u8>> = tree.leaves().iter().map(|x| x.data.clone()).collect();
+        let raw_leaves: Vec<Vec<u8>> = tree.leaves().iter().map(|x| x.data().to_vec()).collect();
 
         // Build proofs for each range that's actually included, and check that the range can be retrieved correctly
         for (namespace, range) in tree.namespace_ranges.clone().iter() {

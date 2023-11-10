@@ -24,7 +24,7 @@ pub struct MerkleTree<Db, M>
 where
     M: MerkleHash,
 {
-    leaves: Vec<LeafWithHash<M::Output>>,
+    leaves: Vec<LeafWithHash<M>>,
     db: Db,
     root: Option<M::Output>,
     visitor: BoxedVisitor<M>,
@@ -102,20 +102,14 @@ where
         }
     }
 
-    pub fn push_leaf(&mut self, raw_leaf: &[u8]) {
-        self.root = None;
-        let hash = self.hasher.hash_leaf(raw_leaf);
-        let leaf = LeafWithHash {
-            hash,
-            data: raw_leaf.to_vec(),
-        };
-        self.leaves.push(leaf);
+    pub fn push_raw_leaf(&mut self, raw_leaf: &[u8]) {
+        let leaf = LeafWithHash::new(raw_leaf.to_vec());
+        self.push_leaf_with_hash(leaf);
     }
 
-    pub fn push_leaf_with_hash_unchecked(&mut self, leaf: Vec<u8>, hash: M::Output) {
+    pub fn push_leaf_with_hash(&mut self, leaf_with_hash: LeafWithHash<M>) {
         self.root = None;
-        let leaf = LeafWithHash { hash, data: leaf };
-        self.leaves.push(leaf);
+        self.leaves.push(leaf_with_hash);
     }
 
     pub fn root(&mut self) -> M::Output {
@@ -129,10 +123,10 @@ where
 
     pub fn get_leaves(&self, range: Range<usize>) -> Vec<Vec<u8>> {
         let leaves = &self.leaves[range];
-        leaves.iter().map(|leaf| leaf.data.clone()).collect()
+        leaves.iter().map(|leaf| leaf.data().to_vec()).collect()
     }
 
-    pub fn leaves(&self) -> &[LeafWithHash<M::Output>] {
+    pub fn leaves(&self) -> &[LeafWithHash<M>] {
         &self.leaves[..]
     }
 
@@ -145,10 +139,10 @@ where
             }
             1 => {
                 let leaf_with_hash = &self.leaves[leaf_range.start];
-                let root = leaf_with_hash.hash.clone();
+                let root = leaf_with_hash.hash().clone();
                 (self.visitor)(&root);
                 self.db
-                    .put(root.clone(), Node::Leaf(leaf_with_hash.data.clone()));
+                    .put(root.clone(), Node::Leaf(leaf_with_hash.data().to_vec()));
                 root
             }
             _ => {
@@ -376,13 +370,13 @@ where
 
     pub fn get_range_with_proof(&mut self, leaf_range: Range<usize>) -> (Vec<Vec<u8>>, Proof<M>) {
         let leaves = &self.leaves[leaf_range.clone()];
-        let leaves = leaves.iter().map(|leaf| leaf.data.clone()).collect();
+        let leaves = leaves.iter().map(|leaf| leaf.data().to_vec()).collect();
         (leaves, self.build_range_proof(leaf_range))
     }
 
     pub fn get_index_with_proof(&mut self, idx: usize) -> (Vec<u8>, Proof<M>) {
         (
-            self.leaves[idx].data.clone(),
+            self.leaves[idx].data().to_vec(),
             self.build_range_proof(idx..idx + 1),
         )
     }

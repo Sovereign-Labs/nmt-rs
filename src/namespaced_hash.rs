@@ -15,7 +15,9 @@ pub struct NamespacedSha2Hasher<const NS_ID_SIZE: usize> {
     _data: PhantomData<[u8; NS_ID_SIZE]>,
 }
 
-impl<const NS_ID_SIZE: usize> NamespaceMerkleHasher for NamespacedSha2Hasher<NS_ID_SIZE> {
+impl<const NS_ID_SIZE: usize> NamespaceMerkleHasher<NS_ID_SIZE>
+    for NamespacedSha2Hasher<NS_ID_SIZE>
+{
     fn with_ignore_max_ns(ignore_max_ns: bool) -> Self {
         Self {
             ignore_max_ns,
@@ -25,6 +27,13 @@ impl<const NS_ID_SIZE: usize> NamespaceMerkleHasher for NamespacedSha2Hasher<NS_
 
     fn ignores_max_ns(&self) -> bool {
         self.ignore_max_ns
+    }
+
+    fn hash_leaf_with_namespace(
+        data: &[u8],
+        namespace: NamespaceId<NS_ID_SIZE>,
+    ) -> <Self as MerkleHash>::Output {
+        NamespacedHash::hash_leaf(data, namespace)
     }
 }
 
@@ -37,9 +46,13 @@ impl<const NS_ID_SIZE: usize> Default for NamespacedSha2Hasher<NS_ID_SIZE> {
     }
 }
 
-pub trait NamespaceMerkleHasher: MerkleHash {
+pub trait NamespaceMerkleHasher<const NS_ID_SIZE: usize>: MerkleHash {
     fn with_ignore_max_ns(ignore_max_ns: bool) -> Self;
     fn ignores_max_ns(&self) -> bool;
+    fn hash_leaf_with_namespace(
+        data: &[u8],
+        namespace: NamespaceId<NS_ID_SIZE>,
+    ) -> <Self as MerkleHash>::Output;
 }
 
 impl<const NS_ID_SIZE: usize> MerkleHash for NamespacedSha2Hasher<NS_ID_SIZE> {

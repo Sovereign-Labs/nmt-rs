@@ -32,7 +32,7 @@ pub enum NamespaceProof<M: MerkleHash, const NS_ID_SIZE: usize> {
 
 impl<M, const NS_ID_SIZE: usize> NamespaceProof<M, NS_ID_SIZE>
 where
-    M: NamespaceMerkleHasher<Output = NamespacedHash<NS_ID_SIZE>>,
+    M: NamespaceMerkleHasher<NS_ID_SIZE, Output = NamespacedHash<NS_ID_SIZE>>,
 {
     /// Verify that the provided *raw* leaves occur in the provided namespace, using this proof
     pub fn verify_complete_namespace(
