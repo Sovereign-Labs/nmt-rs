@@ -1,4 +1,17 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+#![deny(missing_docs)]
+//! This crate implements a Namespaced Merkle Tree compatible with <https://github.com/celestiaorg/nmt>. To quote from their documentation:
+//!
+//! > A Namespaced Merkle Tree is an ordered Merkle tree that uses a modified hash function so that each node in the tree
+//! includes the range of namespaces of the messages in all of the descendants of each node. The leafs in the tree are
+//! ordered by the namespace identifiers of the messages. In a namespaced Merkle tree, each non-leaf node in the tree contains
+//! the lowest and highest namespace identifiers found in all the leaf nodes that are descendants of the non-leaf node, in addition
+//! to the hash of the concatenation of the children of the node. This enables Merkle inclusion proofs to be created that prove to
+//! a verifier that all the elements of the tree for a specific namespace have been included in a Merkle inclusion proof.
+//!
+//! > The concept was first introduced by [@musalbas](https://github.com/musalbas) in the [LazyLedger academic paper](https://arxiv.org/abs/1905.09274).
+//!
+//! This implementation was developed independently by Sovereign Labs, and is not endorsed by the Celestia foundation.
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;
@@ -38,6 +51,7 @@ pub mod nmt_proof;
 pub mod simple_merkle;
 
 const CELESTIA_NS_ID_SIZE: usize = 29;
+/// A namespaced merkle tree as used in Celestia. Uses a sha256 hasher and 29 byte namespace IDs.
 pub type CelestiaNmt = NamespaceMerkleTree<
     MemDb<NamespacedHash<CELESTIA_NS_ID_SIZE>>,
     NamespacedSha2Hasher<CELESTIA_NS_ID_SIZE>,
@@ -76,6 +90,7 @@ fn check_proof_completeness<const NS_ID_SIZE: usize>(
     proof_type
 }
 
+/// A namespaced merkle tree, implemented as a wrapper around a simple merkle tree.
 pub struct NamespaceMerkleTree<Db, M: MerkleHash, const NS_ID_SIZE: usize> {
     namespace_ranges: hash_or_btree_map::Map<NamespaceId<NS_ID_SIZE>, Range<usize>>,
     highest_ns: NamespaceId<NS_ID_SIZE>,
@@ -86,12 +101,20 @@ pub struct NamespaceMerkleTree<Db, M: MerkleHash, const NS_ID_SIZE: usize> {
 impl<Db, M, const NS_ID_SIZE: usize> NamespaceMerkleTree<Db, M, NS_ID_SIZE>
 where
     Db: PreimageDb<M::Output>,
-    M: NamespaceMerkleHasher<Output = NamespacedHash<NS_ID_SIZE>>,
+    M: NamespaceMerkleHasher<NS_ID_SIZE, Output = NamespacedHash<NS_ID_SIZE>> + Default,
 {
+    /// Creates a new tree with the default hasher
     pub fn new() -> Self {
         Default::default()
     }
+}
 
+impl<Db, M, const NS_ID_SIZE: usize> NamespaceMerkleTree<Db, M, NS_ID_SIZE>
+where
+    Db: PreimageDb<M::Output>,
+    M: NamespaceMerkleHasher<NS_ID_SIZE, Output = NamespacedHash<NS_ID_SIZE>>,
+{
+    /// Creates a new nmt with the provided hasher
     pub fn with_hasher(hasher: M) -> Self {
         Self {
             namespace_ranges: Default::default(),
@@ -101,19 +124,20 @@ where
         }
     }
 
+    /// Adds a leaf to the namespaced merkle tree. Leaves must be pushed in namespace order.
     pub fn push_leaf(
         &mut self,
         raw_data: &[u8],
         namespace: NamespaceId<NS_ID_SIZE>,
     ) -> Result<(), &'static str> {
-        let hash = NamespacedHash::hash_leaf(raw_data, namespace);
         // Force leaves to be pushed in order
         if namespace < self.highest_ns {
             return Err("Leaves' namespaces should be inserted in ascending order");
         }
+        let leaf =
+            LeafWithHash::new_with_namespace(raw_data.to_vec(), namespace, self.ignore_max_ns);
         self.highest_ns = namespace;
-        self.inner
-            .push_leaf_with_hash_unchecked(raw_data.to_vec(), hash);
+        self.inner.push_leaf_with_hash(leaf);
 
         let leaves_len = self.leaves().len();
         match self.namespace_ranges.entry(namespace) {
@@ -127,6 +151,7 @@ where
         Ok(())
     }
 
+    /// Returns the root of the tree, computing it if necessary. Repeated calls return a cached root.
     pub fn root(&mut self) -> NamespacedHash<NS_ID_SIZE> {
         self.inner.root()
     }
@@ -143,7 +168,7 @@ where
         // so we need to ensure that the root has size 2 or greater.
         match leaves.len() {
             0 => {
-                if root == &NamespacedHash::EMPTY_ROOT && proof.is_empty() {
+                if root == &M::EMPTY_ROOT && proof.is_empty() {
                     return Ok(RangeProofType::Complete);
                 }
                 return Err(RangeProofError::NoLeavesProvided);
@@ -196,6 +221,7 @@ where
         self.inner.build_range_proof(leaf_range)
     }
 
+    /// Fetch a range of leaves from the tree, along with a proof of their inclusion.
     pub fn get_range_with_proof(
         &mut self,
         leaf_range: Range<usize>,
@@ -210,10 +236,12 @@ where
         )
     }
 
+    /// Get the leaf at a given index in the tree, along with a proof of its inclusion.
     pub fn get_index_with_proof(&mut self, idx: usize) -> (Vec<u8>, Proof<M>) {
         self.inner.get_index_with_proof(idx)
     }
 
+    /// Get an entire namespace from the tree, along with an inclusion proof for that range.
     pub fn get_namespace_with_proof(
         &mut self,
         namespace: NamespaceId<NS_ID_SIZE>,
@@ -228,16 +256,18 @@ where
         (leaves, self.get_namespace_proof(namespace))
     }
 
-    pub fn leaves(&self) -> &[LeafWithHash<NamespacedHash<NS_ID_SIZE>>] {
+    /// Return all the leaves from the tree.
+    pub fn leaves(&self) -> &[LeafWithHash<M>] {
         self.inner.leaves()
     }
 
+    /// Get a proof for the given namespace.
     pub fn get_namespace_proof(
         &mut self,
         namespace: NamespaceId<NS_ID_SIZE>,
     ) -> NamespaceProof<M, NS_ID_SIZE> {
         // If the namespace is outside the range covered by the root, we're done
-        if !self.root().contains(namespace) {
+        if !self.root().contains::<M>(namespace) {
             return NamespaceProof::AbsenceProof {
                 proof: Default::default(),
                 ignore_max_ns: self.ignore_max_ns,
@@ -261,7 +291,7 @@ where
         let namespace = self
             .inner
             .leaves()
-            .binary_search_by(|l| l.hash.min_namespace().cmp(&namespace));
+            .binary_search_by(|l| l.hash().min_namespace().cmp(&namespace));
 
         // The builtin binary search method returns the index where the item could be inserted while maintaining sorted order,
         // which is the index of the leaf we want to prove
@@ -274,7 +304,7 @@ where
             proof,
             ignore_max_ns: self.ignore_max_ns,
         };
-        proof.convert_to_absence_proof(self.inner.leaves()[idx].hash.clone());
+        proof.convert_to_absence_proof(self.inner.leaves()[idx].hash().clone());
         proof
     }
 
@@ -285,23 +315,29 @@ where
         namespace: NamespaceId<NS_ID_SIZE>,
         proof: &NamespaceProof<M, NS_ID_SIZE>,
     ) -> Result<(), RangeProofError> {
-        if root.is_empty_root() && raw_leaves.is_empty() {
+        if root.is_empty_root::<M>() && raw_leaves.is_empty() {
             return Ok(());
         }
 
         match proof {
             NamespaceProof::AbsenceProof { leaf, .. } => {
-                if !root.contains(namespace) {
+                if !root.contains::<M>(namespace) {
                     return Ok(());
                 }
-                let leaf = leaf.clone().ok_or(RangeProofError::MalformedProof)?;
+                let leaf = leaf.clone().ok_or(RangeProofError::MalformedProof(
+                    "Absence proof was inside tree range but did not contain a leaf",
+                ))?;
                 // Check that they haven't provided an absence proof for a non-empty namespace
                 if !raw_leaves.is_empty() {
-                    return Err(RangeProofError::MalformedProof);
+                    return Err(RangeProofError::MalformedProof(
+                        "provided an absence proof for a non-empty namespace",
+                    ));
                 }
                 // Check that the provided namespace actually precedes the leaf
                 if namespace >= leaf.min_namespace() {
-                    return Err(RangeProofError::MalformedProof);
+                    return Err(RangeProofError::MalformedProof(
+                        "provided leaf must have namespace greater than the namespace which is being proven absent",
+                    ));
                 }
                 let num_left_siblings = compute_num_left_siblings(proof.start_idx() as usize);
 
@@ -310,7 +346,7 @@ where
                 if num_left_siblings > 0 {
                     let rightmost_left_sibling = &siblings[num_left_siblings - 1];
                     if rightmost_left_sibling.max_namespace() >= namespace {
-                        return Err(RangeProofError::MalformedProof);
+                        return Err(RangeProofError::MalformedProof("proven namespace must be greater than the namespace of the rightmost left sibling"));
                     }
                 }
                 // Then, check that the root is real
@@ -321,13 +357,16 @@ where
                     proof.start_idx() as usize,
                 )?;
             }
-            NamespaceProof::PresenceProof { .. } => {
-                if !root.contains(namespace) {
+            NamespaceProof::PresenceProof { ignore_max_ns, .. } => {
+                if !root.contains::<M>(namespace) {
                     return Err(RangeProofError::TreeDoesNotContainLeaf);
                 }
                 let leaf_hashes: Vec<NamespacedHash<NS_ID_SIZE>> = raw_leaves
                     .iter()
-                    .map(|data| NamespacedHash::hash_leaf(data.as_ref(), namespace))
+                    .map(|data| {
+                        M::with_ignore_max_ns(*ignore_max_ns)
+                            .hash_leaf_with_namespace(data.as_ref(), namespace)
+                    })
                     .collect();
                 let proof_type = self.check_range_proof(
                     root,
@@ -347,7 +386,7 @@ where
 impl<Db, M, const NS_ID_SIZE: usize> Default for NamespaceMerkleTree<Db, M, NS_ID_SIZE>
 where
     Db: PreimageDb<M::Output>,
-    M: MerkleHash,
+    M: MerkleHash + Default,
 {
     fn default() -> Self {
         Self {
@@ -359,6 +398,7 @@ where
     }
 }
 
+/// Indicates whether the proof includes all leaves from every namespace it covers.
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum RangeProofType {
     /// A range proof over a single namespace is complete if it includes all the leaves
@@ -375,6 +415,7 @@ pub enum RangeProofType {
 #[cfg(test)]
 mod tests {
     use crate::maybestd::{format, vec::Vec};
+    use crate::NamespaceMerkleHasher;
     use crate::{
         namespaced_hash::{NamespaceId, NamespacedSha2Hasher},
         nmt_proof::NamespaceProof,
@@ -450,7 +491,9 @@ mod tests {
                 unreachable!();
             };
             let data = format!("leaf_{i}").as_bytes().to_vec();
-            *leaf = Some(NamespacedHash::hash_leaf(&data, ns_id_from_u64(i)));
+            *leaf = Some(
+                NamespacedSha2Hasher::default().hash_leaf_with_namespace(&data, ns_id_from_u64(i)),
+            );
             proof
                 .verify_complete_namespace(&tree.root(), no_leaves, ns_id_from_u64(2))
                 .unwrap_err();
@@ -509,8 +552,10 @@ mod tests {
         for i in 1..=n {
             for j in 0..=i {
                 let proof = tree.build_range_proof(j..i);
-                let leaf_hashes: Vec<_> =
-                    tree.leaves()[j..i].iter().map(|l| l.hash.clone()).collect();
+                let leaf_hashes: Vec<_> = tree.leaves()[j..i]
+                    .iter()
+                    .map(|l| l.hash().clone())
+                    .collect();
                 let res = tree.check_range_proof(&root, &leaf_hashes, proof.siblings(), j);
                 if i != j {
                     assert!(res.is_ok());
@@ -543,7 +588,7 @@ mod tests {
             let _ = tree.push_leaf(x.to_be_bytes().as_ref(), namespace);
         }
         let root = tree.root();
-        let leaf_hashes: Vec<_> = tree.leaves().iter().map(|x| x.hash.clone()).collect();
+        let leaf_hashes: Vec<_> = tree.leaves().iter().map(|x| x.hash().clone()).collect();
 
         // For each potential range of size four, build and check a range proof
         for i in 0..=28 {
@@ -617,7 +662,7 @@ mod tests {
             let _ = tree.push_leaf(x.to_be_bytes().as_ref(), namespace);
         }
         let root = tree.root();
-        let raw_leaves: Vec<Vec<u8>> = tree.leaves().iter().map(|x| x.data.clone()).collect();
+        let raw_leaves: Vec<Vec<u8>> = tree.leaves().iter().map(|x| x.data().to_vec()).collect();
 
         // Build proofs for each range that's actually included, and check that the range can be retrieved correctly
         for (namespace, range) in tree.namespace_ranges.clone().iter() {

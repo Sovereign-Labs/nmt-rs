@@ -1,3 +1,7 @@
+//! Adds "namespacing" semantics to proofs for the simple merkle tree, enabling
+//! consumers to check that
+//! - A range of leaves forms a complete namespace
+//! - A range of leaves all exists in the same namespace
 use crate::maybestd::{mem, vec::Vec};
 use crate::{
     namespaced_hash::{NamespaceId, NamespaceMerkleHasher, NamespacedHash},
@@ -19,22 +23,30 @@ use crate::{
 )]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum NamespaceProof<M: MerkleHash, const NS_ID_SIZE: usize> {
+    /// A proof that some item is absent from the tree
     AbsenceProof {
+        /// The range proof against the inner merkle tree
         proof: Proof<M>,
+        /// Whether to treat the maximum possible namespace as a special marker value and ignore it in computing namespace ranges
         ignore_max_ns: bool,
+        /// A leaf that *is* present in the tree, if the namespce being proven absent falls within
+        /// the namespace range covered by the root.
         leaf: Option<NamespacedHash<NS_ID_SIZE>>,
     },
+    /// A proof that some item is included in the tree
     PresenceProof {
+        /// The range proof against the inner merkle tree
         proof: Proof<M>,
+        /// Whether to treat the maximum possible namespace as a special marker value and ignore it in computing namespace ranges
         ignore_max_ns: bool,
     },
 }
 
 impl<M, const NS_ID_SIZE: usize> NamespaceProof<M, NS_ID_SIZE>
 where
-    M: NamespaceMerkleHasher<Output = NamespacedHash<NS_ID_SIZE>>,
+    M: NamespaceMerkleHasher<NS_ID_SIZE, Output = NamespacedHash<NS_ID_SIZE>>,
 {
-    /// Verify that the provided *raw* leaves occur in the provided namespace, using this proof
+    /// Verify that the provided *raw* leaves are a complete namespace. This may be a proof of presence or absence.
     pub fn verify_complete_namespace(
         &self,
         root: &NamespacedHash<NS_ID_SIZE>,
@@ -51,7 +63,7 @@ where
         tree.verify_namespace(root, raw_leaves, namespace, self)
     }
 
-    /// Verify a range proof
+    /// Verify a that the provided *raw* leaves are a (1) present and (2) form a contiguous subset of some namespace
     pub fn verify_range(
         &self,
         root: &NamespacedHash<NS_ID_SIZE>,
@@ -59,7 +71,9 @@ where
         leaf_namespace: NamespaceId<NS_ID_SIZE>,
     ) -> Result<(), RangeProofError> {
         if self.is_of_absence() {
-            return Err(RangeProofError::MalformedProof);
+            return Err(RangeProofError::MalformedProof(
+                "Cannot prove that a partial namespace is absent",
+            ));
         };
 
         if raw_leaves.len() != self.range_len() {
@@ -68,7 +82,10 @@ where
 
         let leaf_hashes: Vec<_> = raw_leaves
             .iter()
-            .map(|data| NamespacedHash::hash_leaf(data.as_ref(), leaf_namespace))
+            .map(|data| {
+                M::with_ignore_max_ns(self.ignores_max_ns())
+                    .hash_leaf_with_namespace(data.as_ref(), leaf_namespace)
+            })
             .collect();
         let tree = NamespaceMerkleTree::<NoopDb, M, NS_ID_SIZE>::with_hasher(
             M::with_ignore_max_ns(self.ignores_max_ns()),
@@ -81,6 +98,7 @@ where
         )
     }
 
+    /// Convert a proof of the presence of some leaf to the proof of the absence of another leaf
     pub fn convert_to_absence_proof(&mut self, leaf: NamespacedHash<NS_ID_SIZE>) {
         match self {
             NamespaceProof::AbsenceProof { .. } => {}
@@ -105,22 +123,27 @@ where
         }
     }
 
+    /// Returns the siblings provided as part of the proof
     pub fn siblings(&self) -> &[NamespacedHash<NS_ID_SIZE>] {
         self.merkle_proof().siblings()
     }
 
+    /// Returns the index of the first leaf in the proof
     pub fn start_idx(&self) -> u32 {
         self.merkle_proof().start_idx()
     }
 
+    /// Returns the index *after* the last leaf in the proof
     pub fn end_idx(&self) -> u32 {
         self.merkle_proof().end_idx()
     }
 
+    /// Returns the number of leaves covered by the proof
     fn range_len(&self) -> usize {
         self.merkle_proof().range_len()
     }
 
+    /// Returns the leftmost node to the right of the proven range, if one exists
     pub fn leftmost_right_sibling(&self) -> Option<&NamespacedHash<NS_ID_SIZE>> {
         let siblings = self.siblings();
         let num_left_siblings = compute_num_left_siblings(self.start_idx() as usize);
@@ -130,6 +153,7 @@ where
         None
     }
 
+    /// Returns the rightmost node to the left of the proven range, if one exists
     pub fn rightmost_left_sibling(&self) -> Option<&NamespacedHash<NS_ID_SIZE>> {
         let siblings = self.siblings();
         let num_left_siblings = compute_num_left_siblings(self.start_idx() as usize);
@@ -146,6 +170,7 @@ where
         }
     }
 
+    /// Returns true if the proof is an absence proof
     pub fn is_of_absence(&self) -> bool {
         match self {
             Self::AbsenceProof { .. } => true,
@@ -153,6 +178,7 @@ where
         }
     }
 
+    /// Returns true if the proof is a presence proof
     pub fn is_of_presence(&self) -> bool {
         !self.is_of_absence()
     }
