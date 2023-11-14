@@ -2,6 +2,11 @@
 name = "nmt-rs"
 version = "0.1.0"
 edition = "2021"
+description = "A namespaced merkle tree compatible with Celestia"
+license = "MIT OR Apache-2.0"
+authors = ["Sovereign Labs <info@sovereign.xyz>"]
+homepage = "https://www.sovereign.xyz"
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
