@@ -46,6 +46,9 @@ use simple_merkle::{
 mod namespaced_hash;
 pub use namespaced_hash::*;
 
+mod tendermint_hash;
+pub use tendermint_hash::*;
+
 // pub mod db;
 pub mod nmt_proof;
 pub mod simple_merkle;

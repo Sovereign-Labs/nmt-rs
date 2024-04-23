@@ -1,5 +1,7 @@
 use sha2::{Sha256, Digest};
 
+use crate::simple_merkle::tree::MerkleHash;
+
 fn hash(bytes: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
@@ -18,9 +20,11 @@ fn inner_hash(left: &[u8], right: &[u8]) -> [u8; 32] {
     hash([INNER_PREFIX, left, right].concat().as_slice())
 }
 
+/// A sha256 hasher, compatible with [Tendermint merkle hash](https://github.com/informalsystems/tendermint-rs/blob/979456c9f33463944f97f7ea3900640e59f7ea6d/tendermint/src/merkle.rs)
 pub struct TmSha2Hasher;
 
 impl TmSha2Hasher {
+    /// Create a new instance of the hasher
     pub fn new() -> Self {
         TmSha2Hasher
     }
