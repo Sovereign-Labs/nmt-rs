@@ -10,8 +10,7 @@ fn leaf_hash(bytes: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(LEAF_PREFIX);
     hasher.update(bytes);
-    let result: [u8; 32] = hasher.finalize().into();
-    result
+    hasher.finalize().into()
 }
 
 fn inner_hash(left: &[u8], right: &[u8]) -> [u8; 32] {
@@ -19,8 +18,7 @@ fn inner_hash(left: &[u8], right: &[u8]) -> [u8; 32] {
     hasher.update(INNER_PREFIX);
     hasher.update(left);
     hasher.update(right);
-    let result: [u8; 32] = hasher.finalize().into();
-    result
+    hasher.finalize().into()
 }
 
 /// A sha256 hasher, compatible with [Tendermint merkle hash](https://github.com/informalsystems/tendermint-rs/blob/979456c9f33463944f97f7ea3900640e59f7ea6d/tendermint/src/merkle.rs)
@@ -43,5 +41,23 @@ impl MerkleHash for TmSha2Hasher {
     }
     fn hash_nodes(&self, left: &Self::Output, right: &Self::Output) -> Self::Output {
         inner_hash(left, right)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tendermint::merkle::simple_hash_from_byte_vectors;
+    use crate::{MerkleTree, MemDb};
+    #[test]
+    fn test_tm_hash_matches_upstream() {
+        let leaves: Vec<&[u8]> = vec![b"leaf_1", b"leaf_2", b"leaf_3", b"leaf_4"];
+        let hasher = TmSha2Hasher{};
+        let mut tree: MerkleTree<MemDb<[u8; 32]>, TmSha2Hasher> = MerkleTree::with_hasher(hasher);
+        leaves.iter().for_each(|leaf| {
+            tree.push_raw_leaf(leaf);
+        });
+        let hash_from_byte_slices = simple_hash_from_byte_vectors::<Sha256>(leaves.as_slice());
+        assert_eq!(tree.root().as_ref(), &hash_from_byte_slices);
     }
 }
