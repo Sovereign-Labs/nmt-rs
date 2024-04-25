@@ -1,4 +1,4 @@
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 
 use crate::simple_merkle::tree::MerkleHash;
 
@@ -40,7 +40,10 @@ impl TmSha2Hasher {
 impl MerkleHash for TmSha2Hasher {
     type Output = [u8; 32];
 
-    const EMPTY_ROOT : Self::Output = [227, 176, 196, 66, 152, 252, 28, 20, 154, 251, 244, 200, 153, 111, 185, 36, 39, 174, 65, 228, 100, 155, 147, 76, 164, 149, 153, 27, 120, 82, 184, 85];
+    const EMPTY_ROOT: Self::Output = [
+        227, 176, 196, 66, 152, 252, 28, 20, 154, 251, 244, 200, 153, 111, 185, 36, 39, 174, 65,
+        228, 100, 155, 147, 76, 164, 149, 153, 27, 120, 82, 184, 85,
+    ];
 
     fn hash_leaf(&self, data: &[u8]) -> Self::Output {
         leaf_hash(data)
@@ -53,12 +56,12 @@ impl MerkleHash for TmSha2Hasher {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{MemDb, MerkleTree};
     use tendermint::merkle::simple_hash_from_byte_vectors;
-    use crate::{MerkleTree, MemDb};
     #[test]
     fn test_tm_hash_matches_upstream() {
         let leaves: Vec<&[u8]> = vec![b"leaf_1", b"leaf_2", b"leaf_3", b"leaf_4"];
-        let hasher = TmSha2Hasher{};
+        let hasher = TmSha2Hasher {};
         let mut tree: MerkleTree<MemDb<[u8; 32]>, TmSha2Hasher> = MerkleTree::with_hasher(hasher);
         leaves.iter().for_each(|leaf| {
             tree.push_raw_leaf(leaf);
