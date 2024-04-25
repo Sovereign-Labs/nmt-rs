@@ -22,7 +22,7 @@ mod maybestd {
     #[cfg(not(feature = "std"))]
     pub use core::{cmp, fmt, hash, marker, mem, ops};
     #[cfg(feature = "std")]
-    pub use std::{boxed, cmp, collections, fmt, format, hash, marker, mem, ops, string, vec};
+    pub use std::{boxed, cmp, fmt, hash, marker, mem, ops, vec};
 
     pub mod hash_or_btree_map {
         #[cfg(not(feature = "std"))]
@@ -417,7 +417,7 @@ pub enum RangeProofType {
 
 #[cfg(test)]
 mod tests {
-    use crate::maybestd::{format, vec::Vec};
+    use crate::maybestd::vec::Vec;
     use crate::NamespaceMerkleHasher;
     use crate::{
         namespaced_hash::{NamespaceId, NamespacedSha2Hasher},
