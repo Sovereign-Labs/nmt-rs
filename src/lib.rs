@@ -18,11 +18,15 @@ extern crate alloc;
 
 mod maybestd {
     #[cfg(not(feature = "std"))]
-    pub use alloc::{boxed, collections, format, string, vec};
+    pub use alloc::{boxed, vec};
+    #[cfg(all(not(feature = "std"), feature = "serde"))]
+    pub use alloc::{format, string};
     #[cfg(not(feature = "std"))]
     pub use core::{cmp, fmt, hash, marker, mem, ops};
     #[cfg(feature = "std")]
     pub use std::{boxed, cmp, fmt, hash, marker, mem, ops, vec};
+    #[cfg(all(feature = "std", feature = "serde"))]
+    pub use std::{format, string};
 
     pub mod hash_or_btree_map {
         #[cfg(not(feature = "std"))]
