@@ -6,7 +6,7 @@ description = "A namespaced merkle tree compatible with Celestia"
 license = "MIT OR Apache-2.0"
 authors = ["Sovereign Labs <info@sovereign.xyz>"]
 homepage = "https://www.sovereign.xyz"
-
+repository = "https://github.com/sovereign-labs/nmt-rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
