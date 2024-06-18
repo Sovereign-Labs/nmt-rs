@@ -148,10 +148,10 @@ where
 
         let leaves_len = self.leaves().len();
         match self.namespace_ranges.entry(namespace) {
-            crate::maybestd::hash_or_btree_map::Entry::Occupied(entry) => {
+            hash_or_btree_map::Entry::Occupied(entry) => {
                 entry.into_mut().end = leaves_len;
             }
-            crate::maybestd::hash_or_btree_map::Entry::Vacant(entry) => {
+            hash_or_btree_map::Entry::Vacant(entry) => {
                 entry.insert(leaves_len - 1..leaves_len);
             }
         }
@@ -566,7 +566,7 @@ mod tests {
                 let res = tree.check_range_proof(&root, &leaf_hashes, proof.siblings(), j);
                 if i != j {
                     assert!(res.is_ok());
-                    assert!(res.unwrap() == RangeProofType::Complete)
+                    assert_eq!(res.unwrap(), RangeProofType::Complete)
                 } else {
                     // Cannot prove the empty range!
                     assert!(res.is_err())

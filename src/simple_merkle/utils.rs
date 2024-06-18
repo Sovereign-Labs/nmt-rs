@@ -33,7 +33,7 @@ pub fn compute_tree_size(
             remaining_right_siblings -= 1;
         }
         mask <<= 1;
-        // Ensure that the next iteration won't overflow on 32 bit platforms
+        // Ensure that the next iteration won't overflow on 32-bit platforms
         if index_of_final_node == u32::MAX as usize {
             return Err(RangeProofError::TreeTooLarge);
         }
