@@ -107,4 +107,4 @@ jobs:
         if: ${{ github.repository == 'Sovereign-Labs/nmt-rs' }}
         uses: codecov/codecov-action@v3
         with:
-          fail_ci_if_error: true
+          fail_ci_if_error: false
