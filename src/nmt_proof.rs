@@ -29,7 +29,7 @@ pub enum NamespaceProof<M: MerkleHash, const NS_ID_SIZE: usize> {
         proof: Proof<M>,
         /// Whether to treat the maximum possible namespace as a special marker value and ignore it in computing namespace ranges
         ignore_max_ns: bool,
-        /// A leaf that *is* present in the tree, if the namespce being proven absent falls within
+        /// A leaf that *is* present in the tree, if the namespace being proven absent falls within
         /// the namespace range covered by the root.
         leaf: Option<NamespacedHash<NS_ID_SIZE>>,
     },

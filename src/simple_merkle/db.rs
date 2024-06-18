@@ -89,7 +89,7 @@ impl<
 pub enum Node<H> {
     /// A leaf node contains raw data
     Leaf(Vec<u8>),
-    /// An inner node is the concatention of two child nodes
+    /// An inner node is the concatenation of two child nodes
     Inner(H, H),
 }
 

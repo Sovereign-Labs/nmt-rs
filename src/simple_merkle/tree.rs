@@ -7,11 +7,11 @@ use crate::maybestd::{boxed::Box, fmt::Debug, hash::Hash, ops::Range, vec::Vec};
 /// Manually implement the method we need from #[feature(slice_take)] to
 /// allow building with stable;
 trait TakeLast<T> {
-    fn slice_take_last<'a>(self: &mut &'a Self) -> Option<&'a T>;
+    fn slice_take_last(self: &mut &Self) -> Option<&T>;
 }
 
 impl<T> TakeLast<T> for [T] {
-    fn slice_take_last<'a>(self: &mut &'a Self) -> Option<&'a T> {
+    fn slice_take_last(self: &mut &Self) -> Option<&T> {
         let (last, rem) = self.split_last()?;
         *self = rem;
         Some(last)
@@ -20,7 +20,7 @@ impl<T> TakeLast<T> for [T] {
 
 type BoxedVisitor<M> = Box<dyn Fn(&<M as MerkleHash>::Output)>;
 
-/// Implments an RFC 6962 compatible merkle tree over an in-memory data store which maps preimages to hashes.
+/// Implements an RFC 6962 compatible merkle tree over an in-memory data store which maps preimages to hashes.
 pub struct MerkleTree<Db, M>
 where
     M: MerkleHash,
@@ -196,7 +196,7 @@ where
                     // We're now done with the left subtrie
                     if range_to_prove.start >= split_point {
                         out.push(l.clone())
-                    //  If the range of nodes to prove completely contains the left subtrie, then we don't need to recurse.
+                        //  If the range of nodes to prove completely contains the left subtrie, then we don't need to recurse.
                     } else if range_to_prove.start > subtrie_range.start
                         || range_to_prove.end < split_point
                     {
