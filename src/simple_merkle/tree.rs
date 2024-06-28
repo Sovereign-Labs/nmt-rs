@@ -51,7 +51,6 @@ pub trait MerkleHash {
     // --- no-std
     /// The output of this hasher
     #[cfg(all(not(feature = "serde"), not(feature = "borsh"), not(feature = "std")))]
-    // WHY ORD HERE BUT NOT with serde?
     type Output: Debug + PartialEq + Eq + Clone + Default + Hash + Ord;
 
     /// The output of this hasher
@@ -62,6 +61,7 @@ pub trait MerkleHash {
         + Clone
         + Default
         + Hash
+        + Ord
         + serde::Serialize
         + serde::de::DeserializeOwned;
 
@@ -73,13 +73,14 @@ pub trait MerkleHash {
         + Clone
         + Default
         + Hash
+        + Ord
         + borsh::BorshSerialize
         + borsh::BorshDeserialize;
 
     // --- std
     /// The output of this hasher
     #[cfg(all(not(feature = "serde"), not(feature = "borsh"), feature = "std"))]
-    type Output: Debug + PartialEq + Eq + Clone + Default + Hash;
+    type Output: Debug + PartialEq + Eq + Clone + Default + Hash + Ord;
 
     /// The output of this hasher
     #[cfg(all(feature = "serde", not(feature = "borsh"), feature = "std"))]
