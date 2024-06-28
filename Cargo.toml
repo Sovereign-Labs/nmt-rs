@@ -31,5 +31,3 @@ std = [
     "borsh/std",
     "serde/std",
 ]
-
-
