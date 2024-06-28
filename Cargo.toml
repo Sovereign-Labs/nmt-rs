@@ -26,8 +26,14 @@ tendermint = { version = "0.35.0" }
 [features]
 default = ["std"]
 borsh = ["dep:borsh"]
-serde = ["dep:serde"]
+serde = [
+	"dep:serde",
+	"bytes/serde",
+	"nmt-rs/serde"
+]
 std = [
-    "borsh/std",
-    "serde/std",
+	"borsh?/std",
+	"serde?/std",
+	"bytes/std",
+	"sha2/std"
 ]
