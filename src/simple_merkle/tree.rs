@@ -49,11 +49,11 @@ impl<Db: PreimageDb<<M as MerkleHash>::Output>, M: MerkleHash + Default> Default
 /// A trait for hashing data into a merkle tree
 pub trait MerkleHash {
     // --- no-std
-    /// The output of this hasher
+    /// The output of this hasher.
     #[cfg(all(not(feature = "serde"), not(feature = "borsh"), not(feature = "std")))]
-    type Output: Debug + PartialEq + Eq + Clone + Default + Hash + Ord;
+    type Output: Debug + PartialEq + Eq + Clone + Default + Hash;
 
-    /// The output of this hasher
+    /// The output of this hasher.
     #[cfg(all(feature = "serde", not(feature = "borsh"), not(feature = "std")))]
     type Output: Debug
         + PartialEq
@@ -61,11 +61,10 @@ pub trait MerkleHash {
         + Clone
         + Default
         + Hash
-        + Ord
         + serde::Serialize
         + serde::de::DeserializeOwned;
 
-    /// The output of this hasher
+    /// The output of this hasher.
     #[cfg(all(feature = "borsh", not(feature = "serde"), not(feature = "std")))]
     type Output: Debug
         + PartialEq
@@ -73,16 +72,15 @@ pub trait MerkleHash {
         + Clone
         + Default
         + Hash
-        + Ord
         + borsh::BorshSerialize
         + borsh::BorshDeserialize;
 
     // --- std
-    /// The output of this hasher
+    /// The output of this hasher.
     #[cfg(all(not(feature = "serde"), not(feature = "borsh"), feature = "std"))]
     type Output: Debug + PartialEq + Eq + Clone + Default + Hash + Ord;
 
-    /// The output of this hasher
+    /// The output of this hasher.
     #[cfg(all(feature = "serde", not(feature = "borsh"), feature = "std"))]
     type Output: Debug
         + PartialEq
@@ -94,6 +92,7 @@ pub trait MerkleHash {
         + serde::Serialize
         + serde::de::DeserializeOwned;
 
+    /// The output of this hasher.
     #[cfg(all(not(feature = "serde"), feature = "borsh", feature = "std"))]
     type Output: Debug
         + PartialEq
@@ -105,7 +104,7 @@ pub trait MerkleHash {
         + borsh::BorshSerialize
         + borsh::BorshDeserialize;
 
-    /// The output of this hasher
+    /// The output of this hasher.
     #[cfg(all(feature = "serde", feature = "borsh", feature = "std"))]
     type Output: Debug
         + PartialEq
@@ -119,12 +118,12 @@ pub trait MerkleHash {
         + borsh::BorshSerialize
         + borsh::BorshDeserialize;
 
-    /// The hash of the empty tree. This is often defined as the hash of the empty string
+    /// The hash of the empty tree. This is often defined as the hash of the empty string.
     const EMPTY_ROOT: Self::Output;
 
-    /// Hashes data as a "leaf" of the tree. This operation *should* be domain separated
+    /// Hashes data as a "leaf" of the tree. This operation *should* be domain separated.
     fn hash_leaf(&self, data: &[u8]) -> Self::Output;
-    /// Hashes two digests into one. This operation *should* be domain separated
+    /// Hashes two digests into one. This operation *should* be domain separated.
     fn hash_nodes(&self, l: &Self::Output, r: &Self::Output) -> Self::Output;
 }
 
