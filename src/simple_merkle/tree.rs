@@ -68,7 +68,7 @@ pub trait MerkleHash {
         + serde::de::DeserializeOwned;
 
     /// The output of this hasher
-    #[cfg(all(feature = "serde", feature = "std"))]
+    #[cfg(all(feature = "serde", not(feature = "borsh"), feature = "std"))]
     type Output: Debug
         + PartialEq
         + Eq
@@ -78,6 +78,20 @@ pub trait MerkleHash {
         + Ord
         + serde::Serialize
         + serde::de::DeserializeOwned;
+
+    /// The output of this hasher
+    #[cfg(all(feature = "serde", feature = "borsh", feature = "std"))]
+    type Output: Debug
+    + PartialEq
+    + Eq
+    + Clone
+    + Default
+    + Hash
+    + Ord
+    + serde::Serialize
+    + serde::de::DeserializeOwned
+    + borsh::BorshSerialize
+    + borsh::BorshDeserialize;
 
     /// The hash of the empty tree. This is often defined as the hash of the empty string
     const EMPTY_ROOT: Self::Output;
