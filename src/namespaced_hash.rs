@@ -197,7 +197,7 @@ pub struct NamespacedHash<const NS_ID_SIZE: usize> {
 
 #[cfg(any(test, feature = "borsh"))]
 impl<const NS_ID_SIZE: usize> borsh::BorshDeserialize for NamespacedHash<NS_ID_SIZE> {
-    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+    fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> borsh::io::Result<Self> {
         let mut min_ns = NamespaceId([0u8; NS_ID_SIZE]);
         reader.read_exact(&mut min_ns.0)?;
 

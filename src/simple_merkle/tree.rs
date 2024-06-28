@@ -48,16 +48,14 @@ impl<Db: PreimageDb<<M as MerkleHash>::Output>, M: MerkleHash + Default> Default
 
 /// A trait for hashing data into a merkle tree
 pub trait MerkleHash {
+    // --- no-std
     /// The output of this hasher
-    #[cfg(all(not(feature = "serde"), feature = "std"))]
-    type Output: Debug + PartialEq + Eq + Clone + Default + Hash;
-
-    /// The output of this hasher
-    #[cfg(all(not(feature = "serde"), not(feature = "std")))]
+    #[cfg(all(not(feature = "serde"), not(feautre = "borsh"), not(feature = "std")))]
+    // WHY ORD HERE BUT NOT with serde?
     type Output: Debug + PartialEq + Eq + Clone + Default + Hash + Ord;
 
     /// The output of this hasher
-    #[cfg(all(feature = "serde", not(feature = "std")))]
+    #[cfg(all(feature = "serde", not(feature = "borsh"), not(feature = "std")))]
     type Output: Debug
         + PartialEq
         + Eq
@@ -66,6 +64,22 @@ pub trait MerkleHash {
         + Hash
         + serde::Serialize
         + serde::de::DeserializeOwned;
+
+    /// The output of this hasher
+    #[cfg(all(feature = "borsh", not(feature = "serde"), not(feature = "std")))]
+    type Output: Debug
+        + PartialEq
+        + Eq
+        + Clone
+        + Default
+        + Hash
+        + borsh::BorshSerialize
+        + borsh::BorshDeserialize;
+
+    // --- std
+    /// The output of this hasher
+    #[cfg(all(not(feature = "serde"), not(feature = "borsh"), feature = "std"))]
+    type Output: Debug + PartialEq + Eq + Clone + Default + Hash;
 
     /// The output of this hasher
     #[cfg(all(feature = "serde", not(feature = "borsh"), feature = "std"))]
