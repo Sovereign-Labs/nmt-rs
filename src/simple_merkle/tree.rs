@@ -50,7 +50,7 @@ impl<Db: PreimageDb<<M as MerkleHash>::Output>, M: MerkleHash + Default> Default
 pub trait MerkleHash {
     // --- no-std
     /// The output of this hasher
-    #[cfg(all(not(feature = "serde"), not(feautre = "borsh"), not(feature = "std")))]
+    #[cfg(all(not(feature = "serde"), not(feature = "borsh"), not(feature = "std")))]
     // WHY ORD HERE BUT NOT with serde?
     type Output: Debug + PartialEq + Eq + Clone + Default + Hash + Ord;
 
