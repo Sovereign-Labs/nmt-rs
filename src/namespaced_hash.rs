@@ -399,14 +399,12 @@ impl<const NS_ID_SIZE: usize> TryFrom<&[u8]> for NamespacedHash<NS_ID_SIZE> {
 mod tests {
     use crate::NamespacedHash;
     use borsh::de::BorshDeserialize;
-    use borsh::ser::BorshSerialize;
 
     #[test]
     fn test_namespaced_hash_borsh() {
         let hash = NamespacedHash::<8>::try_from([8u8; 48].as_ref()).unwrap();
 
-        let serialized = hash
-            .try_to_vec()
+        let serialized = borsh::to_vec(&hash)
             .expect("Serialization to vec must succeed");
 
         let got =

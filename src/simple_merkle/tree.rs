@@ -79,6 +79,17 @@ pub trait MerkleHash {
         + serde::Serialize
         + serde::de::DeserializeOwned;
 
+    #[cfg(all(not(feature = "serde"), feature = "borsh", feature = "std"))]
+    type Output: Debug
+    + PartialEq
+    + Eq
+    + Clone
+    + Default
+    + Hash
+    + Ord
+    + borsh::BorshSerialize
+    + borsh::BorshDeserialize;
+
     /// The output of this hasher
     #[cfg(all(feature = "serde", feature = "borsh", feature = "std"))]
     type Output: Debug
