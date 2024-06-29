@@ -197,9 +197,7 @@ pub struct NamespacedHash<const NS_ID_SIZE: usize> {
 
 #[cfg(any(test, feature = "borsh"))]
 impl<const NS_ID_SIZE: usize> borsh::BorshDeserialize for NamespacedHash<NS_ID_SIZE> {
-    fn deserialize_reader<R: borsh::maybestd::io::Read>(
-        reader: &mut R,
-    ) -> borsh::maybestd::io::Result<Self> {
+    fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> borsh::io::Result<Self> {
         let mut min_ns = NamespaceId([0u8; NS_ID_SIZE]);
         reader.read_exact(&mut min_ns.0)?;
 
@@ -399,15 +397,12 @@ impl<const NS_ID_SIZE: usize> TryFrom<&[u8]> for NamespacedHash<NS_ID_SIZE> {
 mod tests {
     use crate::NamespacedHash;
     use borsh::de::BorshDeserialize;
-    use borsh::ser::BorshSerialize;
 
     #[test]
     fn test_namespaced_hash_borsh() {
         let hash = NamespacedHash::<8>::try_from([8u8; 48].as_ref()).unwrap();
 
-        let serialized = hash
-            .try_to_vec()
-            .expect("Serialization to vec must succeed");
+        let serialized = borsh::to_vec(&hash).expect("Serialization to vec must succeed");
 
         let got =
             NamespacedHash::deserialize(&mut &serialized[..]).expect("serialized hash is correct");
