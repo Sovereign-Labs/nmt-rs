@@ -7,11 +7,11 @@ use crate::maybestd::{boxed::Box, fmt::Debug, hash::Hash, ops::Range, vec::Vec};
 /// Manually implement the method we need from #[feature(slice_take)] to
 /// allow building with stable;
 trait TakeLast<T> {
-    fn slice_take_last(self: &mut &Self) -> Option<&T>;
+    fn slice_take_last<'a>(self: &mut &'a Self) -> Option<&'a T>;
 }
 
 impl<T> TakeLast<T> for [T] {
-    fn slice_take_last(self: &mut &Self) -> Option<&T> {
+    fn slice_take_last<'a>(self: &mut &'a Self) -> Option<&'a T> {
         let (last, rem) = self.split_last()?;
         *self = rem;
         Some(last)
