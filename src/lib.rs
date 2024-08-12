@@ -3,15 +3,15 @@
 //! This crate implements a Namespaced Merkle Tree compatible with <https://github.com/celestiaorg/nmt>. To quote from their documentation:
 //!
 //! > A Namespaced Merkle Tree is an ordered Merkle tree that uses a modified hash function so that each node in the tree
-//! includes the range of namespaces of the messages in all of the descendants of each node. The leafs in the tree are
-//! ordered by the namespace identifiers of the messages. In a namespaced Merkle tree, each non-leaf node in the tree contains
-//! the lowest and highest namespace identifiers found in all the leaf nodes that are descendants of the non-leaf node, in addition
-//! to the hash of the concatenation of the children of the node. This enables Merkle inclusion proofs to be created that prove to
-//! a verifier that all the elements of the tree for a specific namespace have been included in a Merkle inclusion proof.
-//!
+//! > includes the range of namespaces of the messages in all of the descendants of each node. The leafs in the tree are
+//! > ordered by the namespace identifiers of the messages. In a namespaced Merkle tree, each non-leaf node in the tree contains
+//! > the lowest and highest namespace identifiers found in all the leaf nodes that are descendants of the non-leaf node, in addition
+//! > to the hash of the concatenation of the children of the node. This enables Merkle inclusion proofs to be created that prove to
+//! > a verifier that all the elements of the tree for a specific namespace have been included in a Merkle inclusion proof.
+//! >
 //! > The concept was first introduced by [@musalbas](https://github.com/musalbas) in the [LazyLedger academic paper](https://arxiv.org/abs/1905.09274).
 //!
-//! This implementation was developed independently by Sovereign Labs, and is not endorsed by the Celestia foundation.
+//! This implementation was developed independently by [Sovereign Labs](https://www.sovereign.xyz/), and is not endorsed by the Celestia foundation.
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;
