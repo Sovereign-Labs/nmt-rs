@@ -116,8 +116,8 @@ impl<const NS_ID_SIZE: usize> MerkleHash for NamespacedSha2Hasher<NS_ID_SIZE> {
 
         let mut output = NamespacedHash::with_min_and_max_ns(min_ns, max_ns);
 
-        hasher.update(&left.iter().collect::<Vec<_>>());
-        hasher.update(&right.iter().collect::<Vec<_>>());
+        hasher.update(left.iter().collect::<Vec<_>>());
+        hasher.update(right.iter().collect::<Vec<_>>());
 
         output.set_hash(hasher.finalize().as_ref());
         output
