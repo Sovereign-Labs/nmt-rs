@@ -429,7 +429,6 @@ mod tests {
         simple_merkle::db::MemDb,
         NamespaceMerkleTree, NamespacedHash, RangeProofType, CELESTIA_NS_ID_SIZE,
     };
-    use paste::paste;
 
     type DefaultNmt<const NS_ID_SIZE: usize> = NamespaceMerkleTree<
         MemDb<NamespacedHash<NS_ID_SIZE>>,
@@ -649,23 +648,16 @@ mod tests {
         test_min_and_max_ns_against(&mut tree)
     }
 
-    macro_rules! make_narrowing_test {
-        ($($x:literal),*) => {
-            $(
-            paste! {
-                #[test]
-                fn [<test_range_proof_narrowing_ $x>]() {
-                    test_range_proof_narrowing_with_n_leaves::<8>($x);
-                    test_range_proof_narrowing_with_n_leaves::<17>($x);
-                    test_range_proof_narrowing_with_n_leaves::<24>($x);
-                    test_range_proof_narrowing_with_n_leaves::<CELESTIA_NS_ID_SIZE>($x);
-                    test_range_proof_narrowing_with_n_leaves::<32>($x);
-                }
-            })*
-        };
+    #[test]
+    fn test_range_proof_narrowing() {
+        for x in 0..20 {
+            test_range_proof_narrowing_with_n_leaves::<8>(x);
+            test_range_proof_narrowing_with_n_leaves::<17>(x);
+            test_range_proof_narrowing_with_n_leaves::<24>(x);
+            test_range_proof_narrowing_with_n_leaves::<CELESTIA_NS_ID_SIZE>(x);
+            test_range_proof_narrowing_with_n_leaves::<32>(x);
+        }
     }
-
-    make_narrowing_test!(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 40);
 
     fn test_completeness_check_impl<const NS_ID_SIZE: usize>() {
         // Build a tree with 32 leaves spread evenly across 8 namespaces

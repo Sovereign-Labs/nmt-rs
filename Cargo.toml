@@ -22,7 +22,6 @@ borsh = { version = "1" }
 serde_json = "1.0.96"
 postcard = { version = "1.0.4", features = ["use-std"] }
 tendermint = { version = "0.35.0" }
-paste = "1.0.15"
 
 [features]
 default = ["std"]
