@@ -20,6 +20,7 @@ This code has not been audited, and may contain critical vulnerabilities. Do not
 
 - [x] Verify namespace range proofs
 
+- [x] Narrow namespace range proofs: supply part of the range to generate a proof for the remaining sub-range
 
 ## License
 

@@ -3,7 +3,6 @@
 //! - A range of leaves forms a complete namespace
 //! - A range of leaves all exists in the same namespace
 use crate::maybestd::{mem, vec::Vec};
-use crate::simple_merkle::db::MemDb;
 use crate::{
     namespaced_hash::{NamespaceId, NamespaceMerkleHasher, NamespacedHash},
     simple_merkle::{
@@ -118,23 +117,18 @@ where
             return Err(RangeProofError::WrongAmountOfLeavesProvided);
         }
 
-        // TODO: make this more concise
-        let left_extra_hashes: Vec<_> = left_extra_raw_leaves
-            .iter()
-            .map(|data| {
-                M::with_ignore_max_ns(self.ignores_max_ns())
-                    .hash_leaf_with_namespace(data.as_ref(), leaf_namespace)
-            })
-            .collect();
-        let right_extra_hashes: Vec<_> = right_extra_raw_leaves
-            .iter()
-            .map(|data| {
-                M::with_ignore_max_ns(self.ignores_max_ns())
-                    .hash_leaf_with_namespace(data.as_ref(), leaf_namespace)
-            })
-            .collect();
+        let leaves_to_hashes = |l: &[L]| -> Vec<NamespacedHash<NS_ID_SIZE>> {
+            l.iter()
+                .map(|data| {
+                    M::with_ignore_max_ns(self.ignores_max_ns())
+                        .hash_leaf_with_namespace(data.as_ref(), leaf_namespace)
+                })
+                .collect()
+        };
+        let left_extra_hashes = leaves_to_hashes(left_extra_raw_leaves);
+        let right_extra_hashes = leaves_to_hashes(right_extra_raw_leaves);
 
-        let mut tree = NamespaceMerkleTree::<MemDb<M::Output>, M, NS_ID_SIZE>::with_hasher(
+        let mut tree = NamespaceMerkleTree::<NoopDb, M, NS_ID_SIZE>::with_hasher(
             M::with_ignore_max_ns(self.ignores_max_ns()),
         );
 

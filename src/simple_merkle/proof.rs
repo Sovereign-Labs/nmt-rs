@@ -1,7 +1,7 @@
 use core::ops::Range;
 
 use super::{
-    db::{MemDb, NoopDb},
+    db::NoopDb,
     error::RangeProofError,
     tree::{MerkleHash, MerkleTree},
     utils::compute_num_left_siblings,
@@ -100,9 +100,12 @@ where
         let new_start_idx = (self.start_idx() as usize)
             .checked_add(left_extra_leaves.len())
             .ok_or(RangeProofError::TreeTooLarge)?;
-        let new_end_idx = new_start_idx + self.range_len() - new_leaf_len as usize; // TODO safe arithmetic
+        let new_end_idx = new_start_idx
+            .checked_add(self.range_len())
+            .and_then(|i| i.checked_sub(new_leaf_len))
+            .ok_or(RangeProofError::TreeTooLarge)?;
 
-        let mut tree = MerkleTree::<MemDb<M::Output>, M>::with_hasher(hasher);
+        let mut tree = MerkleTree::<NoopDb, M>::with_hasher(hasher);
         tree.narrow_range_proof(
             left_extra_leaves,
             new_start_idx..new_end_idx,
