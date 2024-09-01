@@ -1,7 +1,7 @@
 use core::ops::Range;
 
 use super::{
-    db::NoopDb,
+    db::{MemDb, NoopDb},
     error::RangeProofError,
     tree::{MerkleHash, MerkleTree},
     utils::compute_num_left_siblings,
@@ -78,6 +78,36 @@ where
             root,
             leaf_hashes,
             self.siblings(),
+            self.start_idx() as usize,
+        )
+    }
+
+    /// Narrows the proof range: uses an existing proof to create
+    /// a new proof for a subrange of the original proof's range
+    pub fn narrow_range_with_hasher(
+        &self,
+        left_extra_leaves: &[M::Output],
+        right_extra_leaves: &[M::Output],
+        hasher: M,
+    ) -> Result<Self, RangeProofError> {
+        let new_leaf_len = left_extra_leaves
+            .len()
+            .checked_add(right_extra_leaves.len())
+            .ok_or(RangeProofError::TreeTooLarge)?;
+        if new_leaf_len >= self.range_len() {
+            return Err(RangeProofError::WrongAmountOfLeavesProvided);
+        }
+        let new_start_idx = (self.start_idx() as usize)
+            .checked_add(left_extra_leaves.len())
+            .ok_or(RangeProofError::TreeTooLarge)?;
+        let new_end_idx = new_start_idx + self.range_len() - new_leaf_len as usize; // TODO safe arithmetic
+
+        let mut tree = MerkleTree::<MemDb<M::Output>, M>::with_hasher(hasher);
+        tree.narrow_range_proof(
+            left_extra_leaves,
+            new_start_idx..new_end_idx,
+            right_extra_leaves,
+            &mut self.siblings().as_slice(),
             self.start_idx() as usize,
         )
     }

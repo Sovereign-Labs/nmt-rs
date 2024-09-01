@@ -3,6 +3,7 @@
 //! - A range of leaves forms a complete namespace
 //! - A range of leaves all exists in the same namespace
 use crate::maybestd::{mem, vec::Vec};
+use crate::simple_merkle::db::MemDb;
 use crate::{
     namespaced_hash::{NamespaceId, NamespaceMerkleHasher, NamespacedHash},
     simple_merkle::{
@@ -96,6 +97,59 @@ where
             self.siblings(),
             self.start_idx() as usize,
         )
+    }
+
+    /// Narrows the proof range: uses an existing proof to create
+    /// a new proof for a subrange of the original proof's range
+    pub fn narrow_range<L: AsRef<[u8]>>(
+        &self,
+        left_extra_raw_leaves: &[L],
+        right_extra_raw_leaves: &[L],
+        leaf_namespace: NamespaceId<NS_ID_SIZE>,
+    ) -> Result<Self, RangeProofError> {
+        if self.is_of_absence() {
+            return Err(RangeProofError::MalformedProof(
+                "Cannot narrow the range of an absence proof",
+            ));
+        }
+
+        let new_leaf_len = left_extra_raw_leaves.len() + right_extra_raw_leaves.len();
+        if new_leaf_len >= self.range_len() {
+            return Err(RangeProofError::WrongAmountOfLeavesProvided);
+        }
+
+        // TODO: make this more concise
+        let left_extra_hashes: Vec<_> = left_extra_raw_leaves
+            .iter()
+            .map(|data| {
+                M::with_ignore_max_ns(self.ignores_max_ns())
+                    .hash_leaf_with_namespace(data.as_ref(), leaf_namespace)
+            })
+            .collect();
+        let right_extra_hashes: Vec<_> = right_extra_raw_leaves
+            .iter()
+            .map(|data| {
+                M::with_ignore_max_ns(self.ignores_max_ns())
+                    .hash_leaf_with_namespace(data.as_ref(), leaf_namespace)
+            })
+            .collect();
+
+        let mut tree = NamespaceMerkleTree::<MemDb<M::Output>, M, NS_ID_SIZE>::with_hasher(
+            M::with_ignore_max_ns(self.ignores_max_ns()),
+        );
+
+        let proof = tree.inner.narrow_range_proof(
+            &left_extra_hashes,
+            self.start_idx() as usize..(self.range_len() - new_leaf_len),
+            &right_extra_hashes,
+            &mut self.siblings(),
+            self.start_idx() as usize,
+        )?;
+
+        Ok(Self::PresenceProof {
+            proof,
+            ignore_max_ns: self.ignores_max_ns(),
+        })
     }
 
     /// Convert a proof of the presence of some leaf to the proof of the absence of another leaf

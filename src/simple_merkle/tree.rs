@@ -18,6 +18,18 @@ impl<T> TakeLast<T> for [T] {
     }
 }
 
+trait TakeFirst<T> {
+    fn slice_take_first<'a>(self: &mut &'a Self) -> Option<&'a T>;
+}
+
+impl<T> TakeFirst<T> for [T] {
+    fn slice_take_first<'a>(self: &mut &'a Self) -> Option<&'a T> {
+        let (first, rem) = self.split_first()?;
+        *self = rem;
+        Some(first)
+    }
+}
+
 type BoxedVisitor<M> = Box<dyn Fn(&<M as MerkleHash>::Output)>;
 
 /// Implements an RFC 6962 compatible merkle tree over an in-memory data store which maps preimages to hashes.
@@ -352,6 +364,158 @@ where
         Ok(self.hasher.hash_nodes(&left, &right))
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn narrow_range_proof_inner(
+        &self,
+        working_range: Range<usize>,
+        left_extra_leaves: &[M::Output],
+        new_leaf_range: &Range<usize>,
+        right_extra_leaves: &[M::Output],
+        current_proof: &mut &[M::Output],
+        leaves_start_idx: usize,
+        out: &mut Vec<M::Output>,
+    ) -> Result<(), RangeProofError> {
+        assert!(working_range.len() > 1); // sanity check
+        let split_point = next_smaller_po2(working_range.len()) + working_range.start;
+
+        // If the left subtree doesn't overlap with the new leaf, get its root and add it to the proof
+        if new_leaf_range.start >= (split_point) {
+            let sibling = self.partial_tree_subroot_inner(
+                working_range.start..split_point,
+                left_extra_leaves,
+                current_proof,
+                leaves_start_idx,
+            )?;
+            out.push(sibling.clone());
+        } else {
+            let subtrie_size = split_point - working_range.start;
+            assert!(subtrie_size > 0); // sanity check
+            if subtrie_size == 1 {
+                // If it's a leaf, ensure we have it, and do nothing
+                let index = working_range.start;
+                assert!(new_leaf_range.contains(&index));
+            } else {
+                // Else, recurse
+                self.narrow_range_proof_inner(
+                    working_range.start..split_point,
+                    left_extra_leaves,
+                    new_leaf_range,
+                    right_extra_leaves,
+                    current_proof,
+                    leaves_start_idx,
+                    out,
+                )?;
+            }
+        }
+
+        // If the right subtree doesn't overlap with the new leaf, get its root and add it to the proof
+        if new_leaf_range.end <= (split_point) {
+            let right_leaves_start_idx = leaves_start_idx
+                .checked_add(left_extra_leaves.len())
+                .and_then(|i| i.checked_add(new_leaf_range.len()))
+                .ok_or(RangeProofError::TreeTooLarge)?;
+            let sibling = self.partial_tree_subroot_inner(
+                split_point..working_range.end,
+                right_extra_leaves,
+                current_proof,
+                right_leaves_start_idx,
+            )?;
+            out.push(sibling.clone());
+        } else {
+            let subtrie_size = working_range.end - split_point;
+            assert!(subtrie_size > 0); // sanity check
+            if subtrie_size == 1 {
+                // If it's a leaf, ensure we have it, and do nothing
+                let index = split_point;
+                assert!(new_leaf_range.contains(&index));
+            } else {
+                // Else, recurse
+                self.narrow_range_proof_inner(
+                    split_point..working_range.end,
+                    left_extra_leaves,
+                    new_leaf_range,
+                    right_extra_leaves,
+                    current_proof,
+                    leaves_start_idx,
+                    out,
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// To be used during the narrowing operation
+    /// Calculates a new subroot to be part of the narrowed proof,
+    /// in an area covered by the old proof and new leaves
+    fn partial_tree_subroot_inner(
+        &self,
+        subtrie_range: Range<usize>,
+        extra_leaves: &[M::Output],
+        current_proof: &mut &[M::Output],
+        leaves_start_idx: usize,
+    ) -> Result<M::Output, RangeProofError> {
+        fn local_subroot_from_leaves<M: MerkleHash>(
+            leaf_hashes: &[M::Output],
+            leaves_start_idx: usize,
+            range: Range<usize>,
+            hasher: &M,
+        ) -> Result<M::Output, RangeProofError> {
+            if range.len() == 1 {
+                return leaf_hashes
+                    .get(range.start - leaves_start_idx)
+                    .ok_or(RangeProofError::MissingLeaf)
+                    .cloned();
+            } else {
+                let split_point = next_smaller_po2(range.len()) + range.start;
+                let left = local_subroot_from_leaves(
+                    leaf_hashes,
+                    leaves_start_idx,
+                    range.start..split_point,
+                    hasher,
+                )?;
+                let right = local_subroot_from_leaves(
+                    leaf_hashes,
+                    leaves_start_idx,
+                    split_point..range.end,
+                    hasher,
+                )?;
+                Ok(hasher.hash_nodes(&left, &right))
+            }
+        }
+
+        // We are operating on a full subtree. So the base cases are:
+        // [####] - the added leaves are covering the entire range; use them to calculate the subroot
+        // [____] - there are no added leaves in the range; there is an existing proof node for this subtree
+        // In all other cases, we split as normal and recurse on both subtrees.
+
+        let leaves_end_idx = leaves_start_idx + extra_leaves.len();
+        if leaves_start_idx <= subtrie_range.start && leaves_end_idx >= subtrie_range.end {
+            local_subroot_from_leaves(extra_leaves, leaves_start_idx, subtrie_range, &self.hasher)
+        } else if leaves_start_idx >= subtrie_range.end || leaves_end_idx <= subtrie_range.start {
+            return current_proof
+                .slice_take_first()
+                .ok_or(RangeProofError::MissingProofNode)
+                .cloned();
+        } else {
+            assert!(subtrie_range.len() > 1); // sanity check
+            let split_point = next_smaller_po2(subtrie_range.len()) + subtrie_range.start;
+            let left = self.partial_tree_subroot_inner(
+                subtrie_range.start..split_point,
+                extra_leaves,
+                current_proof,
+                leaves_start_idx,
+            )?;
+            let right = self.partial_tree_subroot_inner(
+                split_point..subtrie_range.end,
+                extra_leaves,
+                current_proof,
+                leaves_start_idx,
+            )?;
+            return Ok(self.hasher.hash_nodes(&left, &right));
+        }
+    }
+
     /// Checks a given range proof
     pub fn check_range_proof(
         &self,
@@ -436,6 +600,47 @@ where
             siblings: proof,
             range: start..end,
         }
+    }
+
+    /// Narrows the proof range: uses an existing proof to create
+    /// a new proof for a subrange of the original proof's range
+    pub fn narrow_range_proof(
+        &mut self,
+        left_extra_leaves: &[M::Output],
+        new_leaf_range: Range<usize>,
+        right_extra_leaves: &[M::Output],
+        current_proof: &mut &[M::Output],
+        leaves_start_idx: usize,
+    ) -> Result<Proof<M>, RangeProofError> {
+        let num_left_siblings = compute_num_left_siblings(leaves_start_idx);
+        let num_right_siblings = current_proof
+            .len()
+            .checked_sub(num_left_siblings)
+            .ok_or(RangeProofError::MissingProofNode)?;
+
+        let current_leaf_size = left_extra_leaves
+            .len()
+            .checked_add(new_leaf_range.len())
+            .ok_or(RangeProofError::TreeTooLarge)?
+            .checked_add(right_extra_leaves.len())
+            .ok_or(RangeProofError::TreeTooLarge)?;
+        let tree_size =
+            compute_tree_size(num_right_siblings, leaves_start_idx + current_leaf_size - 1)?;
+        let mut proof = Vec::new();
+        self.narrow_range_proof_inner(
+            0..tree_size,
+            left_extra_leaves,
+            &new_leaf_range,
+            right_extra_leaves,
+            current_proof,
+            leaves_start_idx,
+            &mut proof,
+        )?;
+        Ok(Proof {
+            siblings: proof,
+            // TODO: is it really safe to convert usize to and from u32 everywhere in this library?
+            range: new_leaf_range.start as u32..new_leaf_range.end as u32,
+        })
     }
 
     /// Fetches the requested range of leaves, along with a proof of correctness.

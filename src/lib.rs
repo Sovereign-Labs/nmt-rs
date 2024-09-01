@@ -429,6 +429,7 @@ mod tests {
         simple_merkle::db::MemDb,
         NamespaceMerkleTree, NamespacedHash, RangeProofType, CELESTIA_NS_ID_SIZE,
     };
+    use paste::paste;
 
     type DefaultNmt<const NS_ID_SIZE: usize> = NamespaceMerkleTree<
         MemDb<NamespacedHash<NS_ID_SIZE>>,
@@ -586,6 +587,85 @@ mod tests {
             test_range_proof_roundtrip_with_n_leaves::<32>(x);
         }
     }
+
+    /// Builds a tree with n leaves, and then creates and checks proofs of all valid
+    /// ranges, and attempts to narrow every proof and re-check it for the narrowed range
+    fn test_range_proof_narrowing_with_n_leaves<const NS_ID_SIZE: usize>(n: usize) {
+        let mut tree = tree_with_n_leaves::<NS_ID_SIZE>(n);
+        let root = tree.root();
+        for i in 1..=n {
+            for j in 0..=i {
+                let proof = tree.build_range_proof(j..i);
+                let leaf_hashes: Vec<_> = tree.leaves()[j..i]
+                    .iter()
+                    .map(|l| l.hash().clone())
+                    .collect();
+                for k in (j + 1)..i {
+                    for l in j..k {
+                        let left_hashes: Vec<_> = tree.leaves()[j..l]
+                            .iter()
+                            .map(|l| l.hash().clone())
+                            .collect();
+                        let right_hashes: Vec<_> = tree.leaves()[k..i]
+                            .iter()
+                            .map(|l| l.hash().clone())
+                            .collect();
+                        let narrowed_proof = proof
+                            .narrow_range_with_hasher(
+                                &left_hashes,
+                                &right_hashes,
+                                NamespacedSha2Hasher::with_ignore_max_ns(tree.ignore_max_ns),
+                            )
+                            .unwrap();
+                        let new_leaves: Vec<_> = tree.leaves()[l..k]
+                            .iter()
+                            .map(|l| l.hash().clone())
+                            .collect();
+                        let res = tree.check_range_proof(
+                            &root,
+                            &new_leaves,
+                            narrowed_proof.siblings(),
+                            l,
+                        );
+                        if l != k {
+                            assert!(res.is_ok());
+                            assert_eq!(res.unwrap(), RangeProofType::Complete)
+                        } else {
+                            // Cannot prove the empty range!
+                            assert!(res.is_err())
+                        }
+                    }
+                }
+                let res = tree.check_range_proof(&root, &leaf_hashes, proof.siblings(), j);
+                if i != j {
+                    assert!(res.is_ok());
+                    assert_eq!(res.unwrap(), RangeProofType::Complete)
+                } else {
+                    // Cannot prove the empty range!
+                    assert!(res.is_err())
+                }
+            }
+        }
+        test_min_and_max_ns_against(&mut tree)
+    }
+
+    macro_rules! make_narrowing_test {
+        ($($x:literal),*) => {
+            $(
+            paste! {
+                #[test]
+                fn [<test_range_proof_narrowing_ $x>]() {
+                    test_range_proof_narrowing_with_n_leaves::<8>($x);
+                    test_range_proof_narrowing_with_n_leaves::<17>($x);
+                    test_range_proof_narrowing_with_n_leaves::<24>($x);
+                    test_range_proof_narrowing_with_n_leaves::<CELESTIA_NS_ID_SIZE>($x);
+                    test_range_proof_narrowing_with_n_leaves::<32>($x);
+                }
+            })*
+        };
+    }
+
+    make_narrowing_test!(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 40);
 
     fn test_completeness_check_impl<const NS_ID_SIZE: usize>() {
         // Build a tree with 32 leaves spread evenly across 8 namespaces
