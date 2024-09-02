@@ -100,6 +100,13 @@ where
 
     /// Narrows the proof range: uses an existing proof to create
     /// a new proof for a subrange of the original proof's range
+    ///
+    /// # Arguments
+    ///  - left_extra_raw_leaves: The data for the leaves that will narrow the range from the left
+    ///    side (i.e. all the leaves from the left edge of the currently proven range, to the left
+    ///    edge of the new desired shrunk range)
+    ///  - right_extra_raw_leaves: Analogously, data for all the leaves between the right edge of
+    ///    the desired shrunken range, and the right edge of the current proof's range
     pub fn narrow_range<L: AsRef<[u8]>>(
         &self,
         left_extra_raw_leaves: &[L],
@@ -110,11 +117,6 @@ where
             return Err(RangeProofError::MalformedProof(
                 "Cannot narrow the range of an absence proof",
             ));
-        }
-
-        let new_leaf_len = left_extra_raw_leaves.len() + right_extra_raw_leaves.len();
-        if new_leaf_len >= self.range_len() {
-            return Err(RangeProofError::WrongAmountOfLeavesProvided);
         }
 
         let leaves_to_hashes = |l: &[L]| -> Vec<NamespacedHash<NS_ID_SIZE>> {
@@ -128,16 +130,10 @@ where
         let left_extra_hashes = leaves_to_hashes(left_extra_raw_leaves);
         let right_extra_hashes = leaves_to_hashes(right_extra_raw_leaves);
 
-        let mut tree = NamespaceMerkleTree::<NoopDb, M, NS_ID_SIZE>::with_hasher(
-            M::with_ignore_max_ns(self.ignores_max_ns()),
-        );
-
-        let proof = tree.inner.narrow_range_proof(
+        let proof = self.merkle_proof().narrow_range_with_hasher(
             &left_extra_hashes,
-            self.start_idx() as usize..(self.range_len() - new_leaf_len),
             &right_extra_hashes,
-            &mut self.siblings(),
-            self.start_idx() as usize,
+            M::with_ignore_max_ns(self.ignores_max_ns()),
         )?;
 
         Ok(Self::PresenceProof {
