@@ -1,6 +1,6 @@
 [package]
 name = "nmt-rs"
-version = "0.2.1"
+version = "0.2.3"
 edition = "2021"
 description = "A namespaced merkle tree compatible with Celestia"
 license = "MIT OR Apache-2.0"

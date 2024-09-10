@@ -98,6 +98,50 @@ where
         )
     }
 
+    /// Narrows the proof range: uses an existing proof to create
+    /// a new proof for a subrange of the original proof's range
+    ///
+    /// # Arguments
+    ///  - left_extra_raw_leaves: The data for the leaves that will narrow the range from the left
+    ///    side (i.e. all the leaves from the left edge of the currently proven range, to the left
+    ///    edge of the new desired shrunk range)
+    ///  - right_extra_raw_leaves: Analogously, data for all the leaves between the right edge of
+    ///    the desired shrunken range, and the right edge of the current proof's range
+    pub fn narrow_range<L: AsRef<[u8]>>(
+        &self,
+        left_extra_raw_leaves: &[L],
+        right_extra_raw_leaves: &[L],
+        leaf_namespace: NamespaceId<NS_ID_SIZE>,
+    ) -> Result<Self, RangeProofError> {
+        if self.is_of_absence() {
+            return Err(RangeProofError::MalformedProof(
+                "Cannot narrow the range of an absence proof",
+            ));
+        }
+
+        let leaves_to_hashes = |l: &[L]| -> Vec<NamespacedHash<NS_ID_SIZE>> {
+            l.iter()
+                .map(|data| {
+                    M::with_ignore_max_ns(self.ignores_max_ns())
+                        .hash_leaf_with_namespace(data.as_ref(), leaf_namespace)
+                })
+                .collect()
+        };
+        let left_extra_hashes = leaves_to_hashes(left_extra_raw_leaves);
+        let right_extra_hashes = leaves_to_hashes(right_extra_raw_leaves);
+
+        let proof = self.merkle_proof().narrow_range_with_hasher(
+            &left_extra_hashes,
+            &right_extra_hashes,
+            M::with_ignore_max_ns(self.ignores_max_ns()),
+        )?;
+
+        Ok(Self::PresenceProof {
+            proof,
+            ignore_max_ns: self.ignores_max_ns(),
+        })
+    }
+
     /// Convert a proof of the presence of some leaf to the proof of the absence of another leaf
     pub fn convert_to_absence_proof(&mut self, leaf: NamespacedHash<NS_ID_SIZE>) {
         match self {

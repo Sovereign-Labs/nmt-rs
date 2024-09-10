@@ -1,4 +1,4 @@
-use core::ops::Range;
+use core::{cmp::Ordering, ops::Range};
 
 use super::{
     db::NoopDb,
@@ -78,6 +78,53 @@ where
             root,
             leaf_hashes,
             self.siblings(),
+            self.start_idx() as usize,
+        )
+    }
+
+    /// Narrows the proof range: uses an existing proof to create
+    /// a new proof for a subrange of the original proof's range
+    ///
+    /// # Arguments
+    ///  - left_extra_leaves: The hashes of the leaves that will narrow the range from the left
+    ///    side (i.e. all the leaves from the left edge of the currently proven range, to the left
+    ///    edge of the new desired shrunk range)
+    ///  - right_extra_leaves: Analogously, hashes of all the leaves between the right edge of
+    ///    the desired shrunken range, and the right edge of the current proof's range
+    pub fn narrow_range_with_hasher(
+        &self,
+        left_extra_leaves: &[M::Output],
+        right_extra_leaves: &[M::Output],
+        hasher: M,
+    ) -> Result<Self, RangeProofError> {
+        let new_leaf_len = left_extra_leaves
+            .len()
+            .checked_add(right_extra_leaves.len())
+            .ok_or(RangeProofError::TreeTooLarge)?;
+        match new_leaf_len.cmp(&self.range_len()) {
+            Ordering::Equal => {
+                // We cannot prove the empty range!
+                return Err(RangeProofError::NoLeavesProvided);
+            }
+            Ordering::Greater => return Err(RangeProofError::WrongAmountOfLeavesProvided),
+            Ordering::Less => { /* Ok! */ }
+        }
+
+        // Indices relative to the leaves of the entire tree
+        let new_start_idx = (self.start_idx() as usize)
+            .checked_add(left_extra_leaves.len())
+            .ok_or(RangeProofError::TreeTooLarge)?;
+        let new_end_idx = new_start_idx
+            .checked_add(self.range_len())
+            .and_then(|i| i.checked_sub(new_leaf_len))
+            .ok_or(RangeProofError::TreeTooLarge)?;
+
+        let mut tree = MerkleTree::<NoopDb, M>::with_hasher(hasher);
+        tree.narrow_range_proof(
+            left_extra_leaves,
+            new_start_idx..new_end_idx,
+            right_extra_leaves,
+            &mut self.siblings().as_slice(),
             self.start_idx() as usize,
         )
     }

@@ -422,6 +422,7 @@ pub enum RangeProofType {
 #[cfg(test)]
 mod tests {
     use crate::maybestd::vec::Vec;
+    use crate::simple_merkle::error::RangeProofError;
     use crate::NamespaceMerkleHasher;
     use crate::{
         namespaced_hash::{NamespaceId, NamespacedSha2Hasher},
@@ -452,6 +453,20 @@ mod tests {
         for (i, &ns_id) in ns_ids.as_ref().iter().enumerate() {
             let data = format!("leaf_{i}");
             let namespace = ns_id_from_u64(ns_id);
+            tree.push_leaf(data.as_bytes(), namespace)
+                .expect("Failed to push the leaf");
+        }
+        tree
+    }
+
+    fn tree_from_one_namespace<const NS_ID_SIZE: usize>(
+        leaves: u64,
+        namespace: u64,
+    ) -> DefaultNmt<NS_ID_SIZE> {
+        let mut tree = DefaultNmt::new();
+        let namespace = ns_id_from_u64(namespace);
+        for i in 0..leaves {
+            let data = format!("leaf_{i}");
             tree.push_leaf(data.as_bytes(), namespace)
                 .expect("Failed to push the leaf");
         }
@@ -584,6 +599,122 @@ mod tests {
             test_range_proof_roundtrip_with_n_leaves::<24>(x);
             test_range_proof_roundtrip_with_n_leaves::<CELESTIA_NS_ID_SIZE>(x);
             test_range_proof_roundtrip_with_n_leaves::<32>(x);
+        }
+    }
+
+    fn test_range_proof_narrowing_within_namespace<const NS_ID_SIZE: usize>(n: usize) {
+        let ns_id = 4;
+        let mut tree = tree_from_one_namespace::<NS_ID_SIZE>(n as u64, ns_id); // since there's a single namespace, the actual ID shouldn't matter
+        let root = tree.root();
+        for i in 1..=n {
+            for j in 0..=i {
+                let proof_nmt = NamespaceProof::PresenceProof {
+                    proof: tree.build_range_proof(j..i),
+                    ignore_max_ns: tree.ignore_max_ns,
+                };
+                for k in (j + 1)..=i {
+                    for l in j..=k {
+                        let left_leaf_datas: Vec<_> =
+                            tree.leaves()[j..l].iter().map(|l| l.data()).collect();
+                        let right_leaf_datas: Vec<_> =
+                            tree.leaves()[k..i].iter().map(|l| l.data()).collect();
+                        let narrowed_proof_nmt = proof_nmt.narrow_range(
+                            &left_leaf_datas,
+                            &right_leaf_datas,
+                            ns_id_from_u64(ns_id),
+                        );
+                        if k == l {
+                            // Cannot prove the empty range!
+                            assert!(narrowed_proof_nmt.is_err());
+                            assert_eq!(
+                                narrowed_proof_nmt.unwrap_err(),
+                                RangeProofError::NoLeavesProvided
+                            );
+                            continue;
+                        } else {
+                            assert!(narrowed_proof_nmt.is_ok());
+                        }
+                        let narrowed_proof = narrowed_proof_nmt.unwrap();
+                        let new_leaves: Vec<_> = tree.leaves()[l..k]
+                            .iter()
+                            .map(|l| l.hash().clone())
+                            .collect();
+                        tree.check_range_proof(&root, &new_leaves, narrowed_proof.siblings(), l)
+                            .unwrap();
+                    }
+                }
+            }
+        }
+        test_min_and_max_ns_against(&mut tree)
+    }
+
+    #[test]
+    fn test_range_proof_narrowing_nmt() {
+        for x in 0..20 {
+            test_range_proof_narrowing_within_namespace::<8>(x);
+            test_range_proof_narrowing_within_namespace::<17>(x);
+            test_range_proof_narrowing_within_namespace::<24>(x);
+            test_range_proof_narrowing_within_namespace::<CELESTIA_NS_ID_SIZE>(x);
+            test_range_proof_narrowing_within_namespace::<32>(x);
+        }
+    }
+
+    /// Builds a tree with n leaves, and then creates and checks proofs of all valid
+    /// ranges, and attempts to narrow every proof and re-check it for the narrowed range
+    fn test_range_proof_narrowing_with_n_leaves<const NS_ID_SIZE: usize>(n: usize) {
+        let mut tree = tree_with_n_leaves::<NS_ID_SIZE>(n);
+        let root = tree.root();
+        for i in 1..=n {
+            for j in 0..=i {
+                let proof = tree.build_range_proof(j..i);
+                for k in (j + 1)..=i {
+                    for l in j..=k {
+                        let left_hashes: Vec<_> = tree.leaves()[j..l]
+                            .iter()
+                            .map(|l| l.hash().clone())
+                            .collect();
+                        let right_hashes: Vec<_> = tree.leaves()[k..i]
+                            .iter()
+                            .map(|l| l.hash().clone())
+                            .collect();
+                        let narrowed_proof_simple = proof.narrow_range_with_hasher(
+                            &left_hashes,
+                            &right_hashes,
+                            NamespacedSha2Hasher::with_ignore_max_ns(tree.ignore_max_ns),
+                        );
+                        if k == l {
+                            // Cannot prove the empty range!
+                            assert!(narrowed_proof_simple.is_err());
+                            assert_eq!(
+                                narrowed_proof_simple.unwrap_err(),
+                                RangeProofError::NoLeavesProvided
+                            );
+                            continue;
+                        } else {
+                            assert!(narrowed_proof_simple.is_ok());
+                        }
+                        let narrowed_proof = narrowed_proof_simple.unwrap();
+                        let new_leaves: Vec<_> = tree.leaves()[l..k]
+                            .iter()
+                            .map(|l| l.hash().clone())
+                            .collect();
+                        tree.check_range_proof(&root, &new_leaves, narrowed_proof.siblings(), l)
+                            .unwrap();
+                    }
+                }
+            }
+        }
+        test_min_and_max_ns_against(&mut tree)
+    }
+
+    #[test]
+    fn test_range_proof_narrowing_simple() {
+        for x in 0..20 {
+            test_range_proof_narrowing_with_n_leaves::<8>(x);
+            test_range_proof_narrowing_with_n_leaves::<17>(x);
+            test_range_proof_narrowing_with_n_leaves::<24>(x);
+            test_range_proof_narrowing_with_n_leaves::<CELESTIA_NS_ID_SIZE>(x);
+            test_range_proof_narrowing_with_n_leaves::<32>(x);
         }
     }
 
