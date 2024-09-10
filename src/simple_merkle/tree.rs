@@ -384,8 +384,6 @@ where
     /// - params: the immutable data used during recursion
     /// - working_range: The range of leaf indices, relative to the entire tree, being currently
     ///   considered. Recursion starts with Range(0..tree_size).
-    ///   outside the desired new narrower range.
-    ///   the right edge of the old range.
     /// - current_proof: A slice containing the proof of the current, wide range. The slice is
     ///   mutable as the recursion consumes nodes from it and copies them to the output proof.
     /// - out: will contain the new proof after recursion finishes
