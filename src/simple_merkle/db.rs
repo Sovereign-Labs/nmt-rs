@@ -123,3 +123,19 @@ impl<H: Eq + Hash> PreimageWriter<H> for NoopDb {
 }
 
 impl<H: Default + Eq + Hash> PreimageDb<H> for NoopDb {}
+
+#[cfg(test)]
+mod test {
+    #[test]
+    fn test_mem_db() {
+        use super::*;
+        let mut db = MemDb::<u32>::default();
+        let leaf = Node::Leaf(vec![1, 2, 3]);
+        db.put(1, leaf.clone());
+        assert_eq!(db.get(&1), Some(&leaf));
+
+        let node = Node::Inner(1, 2);
+        db.put(2, node.clone());
+        assert_eq!(db.get(&2), Some(&node));
+    }
+}

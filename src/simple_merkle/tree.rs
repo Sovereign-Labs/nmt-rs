@@ -760,7 +760,38 @@ where
 }
 
 /// Calculates the largest power of two which is strictly less than the argument
-fn next_smaller_po2(int: usize) -> usize {
+pub fn next_smaller_po2(int: usize) -> usize {
     // Calculate the first power of two which is greater than or equal to the argument, then divide by two.
     int.next_power_of_two() >> 1
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::simple_merkle::db::{MemDb};
+    use crate::TmSha2Hasher;
+    use hex;
+
+    #[test]
+    fn test_tree() {
+        let mut tree: MerkleTree<MemDb<[u8; 32]>, TmSha2Hasher> = MerkleTree::new();
+        tree.visitor = Box::new(|h| println!("{:?}", hex::encode(h)));
+        for i in 1..17 {
+            tree.push_raw_leaf(&[i as u8]);
+        }
+        let root = tree.root();
+        assert_eq!(
+            hex::encode(root),
+            "451f071b539a1b912ead47ff3ba769147903a3a23a1d466f93656f4933934ca8"
+        );
+        println!(" ============ \n");
+        println!("merkle root: {:?}", hex::encode(root));
+        let proof = tree.get_index_with_proof(2);
+        println!("index: {} merkle path ============ ", proof.1.range.start);
+        proof
+            .1
+            .siblings
+            .iter()
+            .for_each(|h| println!("{:?}", hex::encode(h)));
+    }
 }
