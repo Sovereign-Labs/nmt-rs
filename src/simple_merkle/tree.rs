@@ -757,10 +757,298 @@ where
             self.build_range_proof(idx..idx + 1),
         )
     }
+
+    /// Builds a multiproof for an arbitrary collection of leaf indices.
+    /// The proof provides the minimum set of hashes required to compute the Merkle root.
+    ///
+    /// TODO: the input should probably be a Set, not a Vec
+    pub fn build_multiproof(&mut self, mut leaf_indices: Vec<usize>) -> Vec<M::Output> {
+        // Sort and deduplicate the indices for easier processing
+        leaf_indices.sort();
+        leaf_indices.dedup();
+
+        if let Some(&idx) = leaf_indices.last() {
+            if idx >= self.leaves.len() {
+                panic!(
+                    "Index out of range: cannot access leaf {} in leaves array of size {}",
+                    idx,
+                    self.leaves.len()
+                );
+            }
+        }
+
+        // Calculate the root to ensure the preimage db is populated
+        let root = self.root();
+        let mut proof = Vec::new();
+
+        // If no indices to prove, return a proof that just contains the root
+        if leaf_indices.is_empty() {
+            if !self.leaves.is_empty() {
+                proof.push(root);
+            }
+            return proof;
+        }
+
+        self.build_multiproof_inner(&leaf_indices, root, 0..self.leaves.len(), &mut proof);
+
+        proof
+    }
+
+    fn build_multiproof_inner(
+        &self,
+        indices_to_prove: &[usize],
+        subtrie_root: M::Output,
+        subtrie_range: Range<usize>,
+        out: &mut Vec<M::Output>,
+    ) {
+        // If no indices in this range, we're done
+        if indices_to_prove.is_empty() {
+            return;
+        }
+
+        if let Some(inner_node) = self.db.get(&subtrie_root) {
+            match inner_node {
+                // If we've reached a leaf, check if it's one we're proving
+                Node::Leaf(_) => {
+                    // If this is not an index we're proving, add it to the proof
+                    if !indices_to_prove.contains(&subtrie_range.start) {
+                        out.push(subtrie_root.clone());
+                    }
+                }
+                Node::Inner(l, r) => {
+                    let split_point = next_smaller_po2(subtrie_range.len()) + subtrie_range.start;
+
+                    // Determine which indices go to the left and right subtrees
+                    let left_indices: Vec<usize> = indices_to_prove
+                        .iter()
+                        .filter(|&&idx| idx < split_point && idx >= subtrie_range.start)
+                        .cloned()
+                        .collect();
+
+                    let right_indices: Vec<usize> = indices_to_prove
+                        .iter()
+                        .filter(|&&idx| idx >= split_point && idx < subtrie_range.end)
+                        .cloned()
+                        .collect();
+
+                    // If no indices to prove left in the left subtree, just add its hash to the proof
+                    if left_indices.is_empty() {
+                        out.push(l.clone());
+                    } else {
+                        // Otherwise, recurse into the left subtree
+                        self.build_multiproof_inner(
+                            &left_indices,
+                            l.clone(),
+                            subtrie_range.start..split_point,
+                            out,
+                        );
+                    }
+
+                    // Similarly for the right subtree
+                    if right_indices.is_empty() {
+                        out.push(r.clone());
+                    } else {
+                        self.build_multiproof_inner(
+                            &right_indices,
+                            r.clone(),
+                            split_point..subtrie_range.end,
+                            out,
+                        );
+                    }
+                }
+            }
+        } else {
+            assert_eq!(&subtrie_root, &M::EMPTY_ROOT);
+            out.push(subtrie_root);
+        }
+    }
+
+    /// Verifies a multiproof for a set of leaves.
+    pub fn verify_multiproof(
+        &self,
+        root: &M::Output,
+        tree_size: usize,
+        leaves: &[(usize, M::Output)],
+        proof: &[M::Output],
+    ) -> Result<(), MultiProofError> {
+        // Early check for empty tree or tree of size 1
+        if leaves.is_empty() {
+            if tree_size == 0 && root == &M::EMPTY_ROOT && proof.is_empty() {
+                return Ok(());
+            } else if tree_size == 1 && proof.len() == 1 && &proof[0] == root {
+                return Ok(());
+            }
+            return Err(MultiProofError::NoLeavesProvided);
+        }
+
+        // Sort leaves by index and deduplicate for easier processing
+        let mut sorted_leaves = leaves.to_vec();
+        sorted_leaves.sort_by_key(|(idx, _)| *idx);
+        for i in 1..sorted_leaves.len() {
+            if sorted_leaves[i - 1].0 == sorted_leaves[i].0 {
+                return Err(MultiProofError::DuplicateLeafIndex);
+            }
+        }
+
+        if tree_size > (1 << 31) {
+            return Err(MultiProofError::TreeTooLarge);
+        }
+        if let Some(&(max_idx, _)) = sorted_leaves.last() {
+            if max_idx >= tree_size {
+                return Err(MultiProofError::LeafIndexOutOfBounds);
+            }
+        }
+
+        // Build a map of leaf indices to their hashes
+        let mut leaf_map = crate::maybestd::hash_or_btree_map::Map::new();
+        for &(idx, ref hash) in sorted_leaves.iter() {
+            leaf_map.insert(idx, hash.clone());
+        }
+
+        let mut proof_iter = proof.iter();
+
+        let computed_root =
+            self.verify_multiproof_inner(&leaf_map, &mut proof_iter, 0, tree_size)?;
+
+        if proof_iter.next().is_some() {
+            return Err(MultiProofError::UnusedProofNodes);
+        }
+
+        if &computed_root == root {
+            Ok(())
+        } else {
+            Err(MultiProofError::InvalidRoot)
+        }
+    }
+
+    fn verify_multiproof_inner(
+        &self,
+        leaves: &crate::maybestd::hash_or_btree_map::Map<usize, M::Output>,
+        proof: &mut std::slice::Iter<M::Output>,
+        start: usize,
+        end: usize,
+    ) -> Result<M::Output, MultiProofError> {
+        // If this is a single node
+        if end - start == 1 {
+            // If this is a leaf we're proving, use its hash
+            if let Some(hash) = leaves.get(&start) {
+                return Ok(hash.clone());
+            }
+
+            // Otherwise, get it from the proof
+            if let Some(hash) = proof.next() {
+                return Ok(hash.clone());
+            }
+
+            return Err(MultiProofError::MissingProofNode);
+        }
+
+        // For a subtree, split it and recurse
+        let mid = start + next_smaller_po2(end - start);
+
+        // Check if we have any leaves in the left subtree
+        let left_has_leaves = leaves.keys().any(|&idx| idx >= start && idx < mid);
+
+        // Check if we have any leaves in the right subtree
+        let right_has_leaves = leaves.keys().any(|&idx| idx >= mid && idx < end);
+
+        // Compute the left hash
+        let left_hash = if left_has_leaves {
+            self.verify_multiproof_inner(leaves, proof, start, mid)?
+        } else {
+            // No leaves in left subtree, get from proof
+            if let Some(hash) = proof.next() {
+                hash.clone()
+            } else {
+                return Err(MultiProofError::MissingProofNode);
+            }
+        };
+
+        // Compute the right hash
+        let right_hash = if right_has_leaves {
+            self.verify_multiproof_inner(leaves, proof, mid, end)?
+        } else {
+            // No leaves in right subtree, get from proof
+            if let Some(hash) = proof.next() {
+                hash.clone()
+            } else {
+                return Err(MultiProofError::MissingProofNode);
+            }
+        };
+
+        // Hash the two children to get our subtree root
+        Ok(self.hasher.hash_nodes(&left_hash, &right_hash))
+    }
+}
+
+#[derive(Debug)]
+#[allow(missing_docs)]
+pub enum MultiProofError {
+    NoLeavesProvided,
+    DuplicateLeafIndex,
+    LeafIndexOutOfBounds,
+    MissingProofNode,
+    UnusedProofNodes,
+    InvalidRoot,
+    TreeTooLarge,
 }
 
 /// Calculates the largest power of two which is strictly less than the argument
 fn next_smaller_po2(int: usize) -> usize {
     // Calculate the first power of two which is greater than or equal to the argument, then divide by two.
     int.next_power_of_two() >> 1
+}
+
+#[cfg(test)]
+mod tests {
+    use rand::{seq::SliceRandom, Rng};
+
+    use crate::{simple_merkle::db::MemDb, TmSha2Hasher};
+
+    use super::MerkleTree;
+
+    fn tree_with_n_leaves(leaves: usize) -> MerkleTree<MemDb<[u8; 32]>, TmSha2Hasher> {
+        let mut tree = MerkleTree::new();
+        for i in 0..leaves {
+            let data = format!("leaf_{i}");
+            tree.push_raw_leaf(data.as_bytes());
+        }
+        tree
+    }
+
+    fn test_multiproof_roundtrip_with_n_leaves(leaves: usize) {
+        let mut rng = rand::rng();
+        let mut tree = tree_with_n_leaves(leaves);
+        let root = tree.root();
+        for leaves_to_prove in 1..=leaves {
+            let mut indices = Vec::<usize>::new();
+            for _ in 0..leaves_to_prove {
+                indices.push(rng.random_range(0..leaves));
+            }
+            indices.sort_unstable();
+            indices.dedup();
+            indices.shuffle(&mut rng);
+            let proof_siblings = tree.build_multiproof(indices.clone());
+
+            let leaf_indices_and_hashes = indices
+                .into_iter()
+                .map(|idx| {
+                    let leaf = tree.leaves.get(idx).unwrap();
+                    let hash: [u8; 32] = *leaf.hash();
+                    (idx, hash)
+                })
+                .collect::<Vec<_>>();
+
+            tree.verify_multiproof(&root, leaves, &leaf_indices_and_hashes, &proof_siblings)
+                .or_else(|e| Err(e))
+                .unwrap();
+        }
+    }
+
+    #[test]
+    fn test_multiproof_roundtrip() {
+        for i in 1..40 {
+            test_multiproof_roundtrip_with_n_leaves(i);
+        }
+    }
 }
