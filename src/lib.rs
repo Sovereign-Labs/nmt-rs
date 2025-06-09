@@ -836,4 +836,11 @@ mod tests {
         test_namespace_verification_impl::<CELESTIA_NS_ID_SIZE>();
         test_namespace_verification_impl::<32>();
     }
+
+    #[allow(unused)]
+    fn compilation_test_nmt_is_send() {
+        fn is_send<T: Send>(_t: T) {}
+
+        is_send(DefaultNmt::<1>::new());
+    }
 }
