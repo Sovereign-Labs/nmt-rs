@@ -502,11 +502,11 @@ where
             params: &SubrootParams<M>,
         ) -> Result<M::Output, RangeProofError> {
             if range.len() == 1 {
-                return params
+                params
                     .extra_leaves
                     .get(range.start - params.leaves_start_idx)
                     .ok_or(RangeProofError::MissingLeaf)
-                    .cloned();
+                    .cloned()
             } else {
                 let split_point = next_smaller_po2(range.len()) + range.start;
                 let left = local_subroot_from_leaves(range.start..split_point, params)?;
