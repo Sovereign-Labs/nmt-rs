@@ -30,7 +30,7 @@ impl<T> TakeFirst<T> for [T] {
     }
 }
 
-type BoxedVisitor<M> = Box<dyn Fn(&<M as MerkleHash>::Output)>;
+type BoxedVisitor<M> = Box<dyn Fn(&<M as MerkleHash>::Output) + Send>;
 
 /// Helper data structure for immutable data used during proof narrowing recursion.
 /// All indices are relative to the leaves of the entire tree.
