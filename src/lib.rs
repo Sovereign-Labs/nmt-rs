@@ -842,5 +842,6 @@ mod tests {
         fn is_send<T: Send>(_t: T) {}
 
         is_send(DefaultNmt::<1>::new());
+        is_send(&DefaultNmt::<1>::new());
     }
 }
