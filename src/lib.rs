@@ -842,6 +842,12 @@ mod tests {
         fn is_send<T: Send>(_t: T) {}
 
         is_send(DefaultNmt::<1>::new());
-        is_send(&DefaultNmt::<1>::new());
+    }
+
+    #[allow(unused)]
+    fn compilation_test_nmt_is_sync() {
+        fn is_send<T: Sync>(_t: T) {}
+
+        is_send(DefaultNmt::<1>::new());
     }
 }
