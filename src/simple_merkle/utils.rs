@@ -40,3 +40,23 @@ pub fn compute_tree_size(
     }
     Ok(index_of_final_node + 1)
 }
+
+#[cfg(test)]
+mod test {
+    use crate::simple_merkle::utils::*;
+
+    #[test]
+    fn test_compute_num_left_siblings() {
+        let num = compute_num_left_siblings(4);
+        assert_eq!(num, 1);
+
+        let num = compute_num_left_siblings(5);
+        assert_eq!(num, 2);
+    }
+
+    #[test]
+    fn test_compute_tree_size() {
+        let size = compute_tree_size(2, 4).unwrap();
+        assert_eq!(size, 8);
+    }
+}
