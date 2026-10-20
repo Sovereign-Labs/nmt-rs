@@ -17,8 +17,7 @@ serde = { version = "1", default-features = false, optional = true, features = [
 borsh = { version = "1", default-features = false, features = ["derive"], optional = true }
 
 [dev-dependencies]
-nmt-rs = { path = ".", features = ["borsh", "serde"] }
-borsh = { version = "1" }
+borsh = { version = "1", features = ["derive"] }
 serde_json = "1.0.96"
 postcard = { version = "1.0.4", features = ["use-std"] }
 tendermint = { version = "0.35.0" }
@@ -28,8 +27,7 @@ default = ["std"]
 borsh = ["dep:borsh"]
 serde = [
 	"dep:serde",
-	"bytes/serde",
-	"nmt-rs/serde"
+	"bytes/serde"
 ]
 std = [
 	"borsh?/std",
