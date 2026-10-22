@@ -2,8 +2,8 @@ use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use nmt_rs::{
-    simple_merkle::{db::MemDb, tree::MerkleTree},
-    CelestiaNmt, NamespaceId, NamespaceMerkleHasher, NamespacedSha2Hasher, TmSha2Hasher,
+    simple_merkle::tree::MerkleTree, CelestiaNmt, NamespaceId, NamespaceMerkleHasher,
+    NamespacedSha2Hasher, TmSha2Hasher,
 };
 
 /// Size of a Celestia share, used as the leaf size.
@@ -13,7 +13,7 @@ const NS_ID_SIZE: usize = 29;
 const LEAVES_PER_NS: usize = 4;
 const TREE_SIZES: [usize; 3] = [64, 256, 1024];
 
-type TmMerkleTree = MerkleTree<MemDb<[u8; 32]>, TmSha2Hasher>;
+type TmMerkleTree = MerkleTree<TmSha2Hasher>;
 
 fn ns(id: u64) -> NamespaceId<NS_ID_SIZE> {
     let mut namespace = NamespaceId::default();

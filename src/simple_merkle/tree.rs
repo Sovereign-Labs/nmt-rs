@@ -1,10 +1,8 @@
-use super::db::{LeafWithHash, PreimageDb};
+use super::db::LeafWithHash;
 use super::error::RangeProofError;
 use super::proof::Proof;
 use super::utils::{compute_num_left_siblings, compute_tree_size};
-use crate::maybestd::{
-    boxed::Box, fmt::Debug, hash::Hash, marker::PhantomData, mem, ops::Range, vec::Vec,
-};
+use crate::maybestd::{boxed::Box, fmt::Debug, hash::Hash, mem, ops::Range, vec::Vec};
 
 /// Manually implement the method we need from #[feature(slice_take)] to
 /// allow building with stable;
@@ -50,9 +48,8 @@ struct ProofNarrowingParams<'a, M: MerkleHash> {
 
 /// Implements an RFC 6962 compatible merkle tree.
 ///
-/// Inner node hashes are cached in memory when the root is computed. The `Db` type parameter is
-/// kept for API compatibility and is no longer used to store preimages.
-pub struct MerkleTree<Db, M>
+/// Inner node hashes are cached in memory when the root is computed.
+pub struct MerkleTree<M>
 where
     M: MerkleHash,
 {
@@ -62,12 +59,9 @@ where
     root: Option<M::Output>,
     visitor: BoxedVisitor<M>,
     hasher: M,
-    _db: PhantomData<Db>,
 }
 
-impl<Db: PreimageDb<<M as MerkleHash>::Output>, M: MerkleHash + Default> Default
-    for MerkleTree<Db, M>
-{
+impl<M: MerkleHash + Default> Default for MerkleTree<M> {
     fn default() -> Self {
         Self {
             leaves: Default::default(),
@@ -75,7 +69,6 @@ impl<Db: PreimageDb<<M as MerkleHash>::Output>, M: MerkleHash + Default> Default
             root: Default::default(),
             visitor: Box::new(|_| {}),
             hasher: Default::default(),
-            _db: PhantomData,
         }
     }
 }
@@ -174,9 +167,8 @@ pub trait MerkleHash {
     fn hash_nodes(&self, l: &Self::Output, r: &Self::Output) -> Self::Output;
 }
 
-impl<Db, M> MerkleTree<Db, M>
+impl<M> MerkleTree<M>
 where
-    Db: PreimageDb<M::Output>,
     M: MerkleHash + Default,
 {
     /// Constructs an empty merkle tree with a default hasher
@@ -185,9 +177,8 @@ where
     }
 }
 
-impl<Db, M> MerkleTree<Db, M>
+impl<M> MerkleTree<M>
 where
-    Db: PreimageDb<M::Output>,
     M: MerkleHash,
 {
     /// Constructs an empty merkle tree with the given hasher
@@ -198,7 +189,6 @@ where
             root: Some(M::EMPTY_ROOT),
             visitor: Box::new(|_| {}),
             hasher,
-            _db: PhantomData,
         }
     }
 
@@ -645,7 +635,7 @@ where
     /// A range proof of build_range_proof(1..3) would return the vector [C, F], since those two hashes, together
     /// with the two leaves in the range, are sufficient to reconstruct the tree
     pub fn build_range_proof(&mut self, leaf_range: Range<usize>) -> Proof<M> {
-        // Calculate the root to ensure that the preimage db is populated
+        // Calculate the root to ensure that the inner node cache is populated
         let root = self.root();
         let mut proof = Vec::new();
         let start = leaf_range.start as u32;
@@ -784,9 +774,9 @@ fn next_smaller_po2(int: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{simple_merkle::db::MemDb, TmSha2Hasher};
+    use crate::TmSha2Hasher;
 
-    type TmTree = MerkleTree<MemDb<[u8; 32]>, TmSha2Hasher>;
+    type TmTree = MerkleTree<TmSha2Hasher>;
 
     fn recompute_root(tree: &TmTree, range: Range<usize>) -> [u8; 32] {
         if range.len() == 1 {

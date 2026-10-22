@@ -27,20 +27,13 @@ mod maybestd {
     pub use std::{boxed, cmp, fmt, hash, marker, mem, ops, vec};
     #[cfg(all(feature = "std", feature = "serde"))]
     pub use std::{format, string};
-
-    pub mod hash_or_btree_map {
-        #[cfg(not(feature = "std"))]
-        pub use alloc::collections::btree_map::BTreeMap as Map;
-        #[cfg(feature = "std")]
-        pub use std::collections::hash_map::HashMap as Map;
-    }
 }
 
 use crate::maybestd::{ops::Range, vec::Vec};
 
 pub use nmt_proof::NamespaceProof;
 use simple_merkle::{
-    db::{LeafWithHash, MemDb, PreimageDb},
+    db::LeafWithHash,
     error::RangeProofError,
     proof::Proof,
     tree::{MerkleHash, MerkleTree},
@@ -59,11 +52,8 @@ pub mod simple_merkle;
 
 const CELESTIA_NS_ID_SIZE: usize = 29;
 /// A namespaced merkle tree as used in Celestia. Uses a sha256 hasher and 29 byte namespace IDs.
-pub type CelestiaNmt = NamespaceMerkleTree<
-    MemDb<NamespacedHash<CELESTIA_NS_ID_SIZE>>,
-    NamespacedSha2Hasher<CELESTIA_NS_ID_SIZE>,
-    CELESTIA_NS_ID_SIZE,
->;
+pub type CelestiaNmt =
+    NamespaceMerkleTree<NamespacedSha2Hasher<CELESTIA_NS_ID_SIZE>, CELESTIA_NS_ID_SIZE>;
 
 /// Checks if a proof contains any partial namespaces
 fn check_proof_completeness<const NS_ID_SIZE: usize>(
@@ -98,17 +88,16 @@ fn check_proof_completeness<const NS_ID_SIZE: usize>(
 }
 
 /// A namespaced merkle tree, implemented as a wrapper around a simple merkle tree.
-pub struct NamespaceMerkleTree<Db, M: MerkleHash, const NS_ID_SIZE: usize> {
+pub struct NamespaceMerkleTree<M: MerkleHash, const NS_ID_SIZE: usize> {
     /// Each namespace in the tree with the index of its first leaf, in namespace order.
     namespace_starts: Vec<(NamespaceId<NS_ID_SIZE>, usize)>,
     highest_ns: NamespaceId<NS_ID_SIZE>,
     ignore_max_ns: bool,
-    inner: MerkleTree<Db, M>,
+    inner: MerkleTree<M>,
 }
 
-impl<Db, M, const NS_ID_SIZE: usize> NamespaceMerkleTree<Db, M, NS_ID_SIZE>
+impl<M, const NS_ID_SIZE: usize> NamespaceMerkleTree<M, NS_ID_SIZE>
 where
-    Db: PreimageDb<M::Output>,
     M: NamespaceMerkleHasher<NS_ID_SIZE, Output = NamespacedHash<NS_ID_SIZE>> + Default,
 {
     /// Creates a new tree with the default hasher
@@ -117,9 +106,8 @@ where
     }
 }
 
-impl<Db, M, const NS_ID_SIZE: usize> NamespaceMerkleTree<Db, M, NS_ID_SIZE>
+impl<M, const NS_ID_SIZE: usize> NamespaceMerkleTree<M, NS_ID_SIZE>
 where
-    Db: PreimageDb<M::Output>,
     M: NamespaceMerkleHasher<NS_ID_SIZE, Output = NamespacedHash<NS_ID_SIZE>>,
 {
     /// Creates a new nmt with the provided hasher
@@ -128,7 +116,7 @@ where
             namespace_starts: Default::default(),
             highest_ns: NamespaceId([0u8; NS_ID_SIZE]),
             ignore_max_ns: hasher.ignores_max_ns(),
-            inner: MerkleTree::<Db, M>::with_hasher(hasher),
+            inner: MerkleTree::<M>::with_hasher(hasher),
         }
     }
 
@@ -392,9 +380,8 @@ where
     }
 }
 
-impl<Db, M, const NS_ID_SIZE: usize> Default for NamespaceMerkleTree<Db, M, NS_ID_SIZE>
+impl<M, const NS_ID_SIZE: usize> Default for NamespaceMerkleTree<M, NS_ID_SIZE>
 where
-    Db: PreimageDb<M::Output>,
     M: MerkleHash + Default,
 {
     fn default() -> Self {
@@ -429,15 +416,11 @@ mod tests {
     use crate::{
         namespaced_hash::{NamespaceId, NamespacedSha2Hasher},
         nmt_proof::NamespaceProof,
-        simple_merkle::db::MemDb,
-        NamespaceMerkleTree, NamespacedHash, RangeProofType, CELESTIA_NS_ID_SIZE,
+        NamespaceMerkleTree, RangeProofType, CELESTIA_NS_ID_SIZE,
     };
 
-    type DefaultNmt<const NS_ID_SIZE: usize> = NamespaceMerkleTree<
-        MemDb<NamespacedHash<NS_ID_SIZE>>,
-        NamespacedSha2Hasher<NS_ID_SIZE>,
-        NS_ID_SIZE,
-    >;
+    type DefaultNmt<const NS_ID_SIZE: usize> =
+        NamespaceMerkleTree<NamespacedSha2Hasher<NS_ID_SIZE>, NS_ID_SIZE>;
 
     fn ns_id_from_u64<const NS_ID_SIZE: usize>(val: u64) -> NamespaceId<NS_ID_SIZE> {
         // make sure the namespace id can hold the provided value
