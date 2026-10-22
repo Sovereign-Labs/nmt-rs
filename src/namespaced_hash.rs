@@ -1,4 +1,6 @@
-use crate::maybestd::{cmp, fmt, marker::PhantomData, vec::Vec};
+#[cfg(feature = "serde")]
+use crate::maybestd::vec::Vec;
+use crate::maybestd::{cmp, fmt, marker::PhantomData};
 use sha2::{Digest, Sha256};
 
 use crate::simple_merkle::{error::RangeProofError, tree::MerkleHash};
@@ -125,8 +127,11 @@ impl<const NS_ID_SIZE: usize> MerkleHash for NamespacedSha2Hasher<NS_ID_SIZE> {
 
         let mut output = NamespacedHash::with_min_and_max_ns(min_ns, max_ns);
 
-        hasher.update(left.iter().collect::<Vec<_>>());
-        hasher.update(right.iter().collect::<Vec<_>>());
+        for node in [left, right] {
+            hasher.update(node.min_ns.0);
+            hasher.update(node.max_ns.0);
+            hasher.update(node.hash);
+        }
 
         output.set_hash(hasher.finalize().as_ref());
         Ok(output)
