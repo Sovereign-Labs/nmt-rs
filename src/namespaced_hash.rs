@@ -1,7 +1,7 @@
 use crate::maybestd::{cmp, fmt, marker::PhantomData, vec::Vec};
 use sha2::{Digest, Sha256};
 
-use crate::simple_merkle::tree::MerkleHash;
+use crate::simple_merkle::{error::RangeProofError, tree::MerkleHash};
 /// The length of a hash in bytes
 pub const HASH_LEN: usize = 32;
 /// The default hasher. Currently sha256
@@ -121,6 +121,17 @@ impl<const NS_ID_SIZE: usize> MerkleHash for NamespacedSha2Hasher<NS_ID_SIZE> {
 
         output.set_hash(hasher.finalize().as_ref());
         output
+    }
+
+    fn try_hash_nodes(
+        &self,
+        left: &Self::Output,
+        right: &Self::Output,
+    ) -> Result<Self::Output, RangeProofError> {
+        if left.max_namespace() > right.min_namespace() {
+            return Err(RangeProofError::MalformedTree);
+        }
+        Ok(self.hash_nodes(left, right))
     }
 }
 
