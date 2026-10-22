@@ -164,6 +164,14 @@ pub trait MerkleHash {
     fn hash_leaf(&self, data: &[u8]) -> Self::Output;
     /// Hashes two digests into one. This operation *should* be domain separated.
     fn hash_nodes(&self, l: &Self::Output, r: &Self::Output) -> Self::Output;
+    /// Hashes two digests into one, returning an error instead of panicking if the inputs are malformed.
+    fn try_hash_nodes(
+        &self,
+        l: &Self::Output,
+        r: &Self::Output,
+    ) -> Result<Self::Output, RangeProofError> {
+        Ok(self.hash_nodes(l, r))
+    }
 }
 
 impl<Db, M> MerkleTree<Db, M>
@@ -375,7 +383,7 @@ where
                 .clone()
         };
 
-        Ok(self.hasher.hash_nodes(&left, &right))
+        self.hasher.try_hash_nodes(&left, &right)
     }
 
     /// Helper for the proof narrowing operation.
@@ -511,7 +519,7 @@ where
                 let split_point = next_smaller_po2(range.len()) + range.start;
                 let left = local_subroot_from_leaves(range.start..split_point, params)?;
                 let right = local_subroot_from_leaves(split_point..range.end, params)?;
-                Ok(params.hasher.hash_nodes(&left, &right))
+                params.hasher.try_hash_nodes(&left, &right)
             }
         }
 
@@ -563,7 +571,7 @@ where
                 extra_leaves,
                 leaves_start_idx,
             )?;
-            Ok(self.hasher.hash_nodes(&left, &right))
+            self.hasher.try_hash_nodes(&left, &right)
         }
     }
 

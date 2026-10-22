@@ -326,18 +326,18 @@ where
 
         match proof {
             NamespaceProof::AbsenceProof { leaf, .. } => {
-                if !root.contains::<M>(namespace) {
-                    return Ok(());
-                }
-                let leaf = leaf.clone().ok_or(RangeProofError::MalformedProof(
-                    "Absence proof was inside tree range but did not contain a leaf",
-                ))?;
                 // Check that they haven't provided an absence proof for a non-empty namespace
                 if !raw_leaves.is_empty() {
                     return Err(RangeProofError::MalformedProof(
                         "provided an absence proof for a non-empty namespace",
                     ));
                 }
+                if !root.contains::<M>(namespace) {
+                    return Ok(());
+                }
+                let leaf = leaf.clone().ok_or(RangeProofError::MalformedProof(
+                    "Absence proof was inside tree range but did not contain a leaf",
+                ))?;
                 // Check that the provided namespace actually precedes the leaf
                 if namespace >= leaf.min_namespace() {
                     return Err(RangeProofError::MalformedProof(
@@ -784,9 +784,14 @@ mod tests {
 
         let root = tree.root();
         let (leaves, proof) = tree.get_namespace_with_proof(max_namespace);
-        assert!(proof
-            .verify_complete_namespace(&root, &leaves, max_namespace)
-            .is_ok());
+        // With ignore_max_ns the root only covers max-namespace leaves if they're the only leaves;
+        // otherwise an absence proof is returned, which must not verify the (non-empty) leaves
+        assert_eq!(
+            proof
+                .verify_complete_namespace(&root, &leaves, max_namespace)
+                .is_ok(),
+            proof.is_of_presence()
+        );
     }
 
     fn test_namespace_verification_impl<const NS_ID_SIZE: usize>() {
