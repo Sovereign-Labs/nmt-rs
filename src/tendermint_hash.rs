@@ -56,13 +56,13 @@ impl MerkleHash for TmSha2Hasher {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MemDb, MerkleTree};
+    use crate::MerkleTree;
     use tendermint::merkle::simple_hash_from_byte_vectors;
     #[test]
     fn test_tm_hash_matches_upstream() {
         let leaves: Vec<&[u8]> = vec![b"leaf_1", b"leaf_2", b"leaf_3", b"leaf_4"];
         let hasher = TmSha2Hasher {};
-        let mut tree: MerkleTree<MemDb<[u8; 32]>, TmSha2Hasher> = MerkleTree::with_hasher(hasher);
+        let mut tree: MerkleTree<TmSha2Hasher> = MerkleTree::with_hasher(hasher);
         leaves.iter().for_each(|leaf| {
             tree.push_raw_leaf(leaf);
         });
