@@ -197,6 +197,9 @@ where
         }
 
         let num_left_siblings = compute_num_left_siblings(leaves_start_idx);
+        if proof.len() < num_left_siblings {
+            return Err(RangeProofError::MissingProofNode);
+        }
 
         let proof_completeness = check_proof_completeness(leaves, proof, num_left_siblings);
 
@@ -347,9 +350,10 @@ where
                 let num_left_siblings = compute_num_left_siblings(proof.start_idx() as usize);
 
                 // Check that the namespace actually follows the closest sibling
-                let siblings = proof.siblings();
                 if num_left_siblings > 0 {
-                    let rightmost_left_sibling = &siblings[num_left_siblings - 1];
+                    let rightmost_left_sibling = proof
+                        .rightmost_left_sibling()
+                        .ok_or(RangeProofError::MissingProofNode)?;
                     if rightmost_left_sibling.max_namespace() >= namespace {
                         return Err(RangeProofError::MalformedProof("proven namespace must be greater than the namespace of the rightmost left sibling"));
                     }
