@@ -1,0 +1,29 @@
+[package]
+name = "nmt-rs-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+nmt-rs = { path = ".." }
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "malformed_proofs"
+path = "fuzz_targets/malformed_proofs.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "namespace_proofs"
+path = "fuzz_targets/namespace_proofs.rs"
+test = false
+doc = false
+bench = false
