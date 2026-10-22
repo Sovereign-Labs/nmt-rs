@@ -6,8 +6,7 @@ use crate::maybestd::{mem, vec::Vec};
 use crate::{
     namespaced_hash::{NamespaceId, NamespaceMerkleHasher, NamespacedHash},
     simple_merkle::{
-        db::NoopDb, error::RangeProofError, proof::Proof, tree::MerkleHash,
-        utils::compute_num_left_siblings,
+        error::RangeProofError, proof::Proof, tree::MerkleHash, utils::compute_num_left_siblings,
     },
     NamespaceMerkleTree,
 };
@@ -57,9 +56,9 @@ where
             return Err(RangeProofError::WrongAmountOfLeavesProvided);
         }
 
-        let tree = NamespaceMerkleTree::<NoopDb, M, NS_ID_SIZE>::with_hasher(
-            M::with_ignore_max_ns(self.ignores_max_ns()),
-        );
+        let tree = NamespaceMerkleTree::<M, NS_ID_SIZE>::with_hasher(M::with_ignore_max_ns(
+            self.ignores_max_ns(),
+        ));
         tree.verify_namespace(root, raw_leaves, namespace, self)
     }
 
@@ -87,9 +86,9 @@ where
                     .hash_leaf_with_namespace(data.as_ref(), leaf_namespace)
             })
             .collect();
-        let tree = NamespaceMerkleTree::<NoopDb, M, NS_ID_SIZE>::with_hasher(
-            M::with_ignore_max_ns(self.ignores_max_ns()),
-        );
+        let tree = NamespaceMerkleTree::<M, NS_ID_SIZE>::with_hasher(M::with_ignore_max_ns(
+            self.ignores_max_ns(),
+        ));
         tree.inner.check_range_proof(
             root,
             &leaf_hashes,
