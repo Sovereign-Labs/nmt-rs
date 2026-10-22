@@ -22,6 +22,17 @@ This code has not been audited, and may contain critical vulnerabilities. Do not
 
 - [x] Narrow namespace range proofs: supply part of the range to generate a proof for the remaining sub-range
 
+## Benchmarks
+
+Benchmarks use [Criterion](https://github.com/bheisler/criterion.rs) and cover tree construction,
+namespace proof generation, and proof verification/narrowing:
+
+```sh
+cargo bench                       # run everything
+cargo bench -- nmt/verify         # run benchmarks matching a filter
+cargo bench --bench go_parity     # counterparts of the celestiaorg/nmt Go benchmarks
+```
+
 ## License
 
 Licensed under the [Apache License, Version
