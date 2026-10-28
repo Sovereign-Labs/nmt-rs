@@ -541,10 +541,10 @@ where
                 },
             )
         } else if leaves_start_idx >= subtree_range.end || leaves_end_idx <= subtree_range.start {
-            return current_proof
+            current_proof
                 .slice_take_first()
                 .ok_or(RangeProofError::MissingProofNode)
-                .cloned();
+                .cloned()
         } else {
             // Sanity check. Both in narrow_range_proof_inner and here, we never recurse on ranges
             // < 2, as those are base cases (we return the leaves directly).
@@ -563,7 +563,7 @@ where
                 extra_leaves,
                 leaves_start_idx,
             )?;
-            return Ok(self.hasher.hash_nodes(&left, &right));
+            Ok(self.hasher.hash_nodes(&left, &right))
         }
     }
 
@@ -584,13 +584,11 @@ where
                 }
                 return Err(RangeProofError::NoLeavesProvided);
             }
-            1 => {
-                if proof.is_empty() {
-                    if &leaves[0] == root && leaves_start_idx == 0 {
-                        return Ok(());
-                    }
-                    return Err(RangeProofError::TreeDoesNotContainLeaf);
+            1 if proof.is_empty() => {
+                if &leaves[0] == root && leaves_start_idx == 0 {
+                    return Ok(());
                 }
+                return Err(RangeProofError::TreeDoesNotContainLeaf);
             }
             _ => {}
         };
