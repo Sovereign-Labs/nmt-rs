@@ -1,5 +1,5 @@
 use nmt_rs::{
-    simple_merkle::{db::MemDb, proof::Proof, tree::MerkleHash},
+    simple_merkle::{db::MemDb, error::RangeProofError, proof::Proof, tree::MerkleHash},
     NamespaceId, NamespaceMerkleHasher, NamespaceMerkleTree, NamespaceProof, NamespacedHash,
     NamespacedSha2Hasher,
 };
@@ -407,6 +407,14 @@ impl MerkleHash for ConfiguredHasher {
 
     fn hash_nodes(&self, left: &Self::Output, right: &Self::Output) -> Self::Output {
         self.inner.hash_nodes(left, right)
+    }
+
+    fn validate_nodes(
+        &self,
+        left: &Self::Output,
+        right: &Self::Output,
+    ) -> Result<(), RangeProofError> {
+        self.inner.validate_nodes(left, right)
     }
 }
 

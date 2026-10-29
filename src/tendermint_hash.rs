@@ -1,6 +1,6 @@
 use sha2::{Digest, Sha256};
 
-use crate::simple_merkle::tree::MerkleHash;
+use crate::simple_merkle::{error::RangeProofError, tree::MerkleHash};
 
 const LEAF_PREFIX: &[u8] = &[0];
 const INNER_PREFIX: &[u8] = &[1];
@@ -50,6 +50,14 @@ impl MerkleHash for TmSha2Hasher {
     }
     fn hash_nodes(&self, left: &Self::Output, right: &Self::Output) -> Self::Output {
         inner_hash(left, right)
+    }
+
+    fn validate_nodes(
+        &self,
+        _left: &Self::Output,
+        _right: &Self::Output,
+    ) -> Result<(), RangeProofError> {
+        Ok(())
     }
 }
 

@@ -99,9 +99,8 @@ impl<const NS_ID_SIZE: usize> MerkleHash for NamespacedSha2Hasher<NS_ID_SIZE> {
     }
 
     fn hash_nodes(&self, left: &Self::Output, right: &Self::Output) -> Self::Output {
-        if left.max_namespace() > right.min_namespace() {
-            panic!("Invalid nodes: left max namespace must be <= right min namespace")
-        }
+        self.validate_nodes(left, right)
+            .expect("Invalid nodes: left max namespace must be <= right min namespace");
         let mut hasher = DefaultHasher::new_with_prefix(INTERNAL_NODE_DOMAIN_SEPARATOR);
         let max_nsid = NamespaceId::<NS_ID_SIZE>::max_id();
 

@@ -253,6 +253,12 @@ where
     }
 
     /// Get an entire namespace from the tree, along with an inclusion proof for that range.
+    ///
+    /// When the tree ignores the max namespace and also contains other namespaces, the max namespace
+    /// lies outside the root's namespace range. Its leaves are still returned, but the proof is an empty
+    /// absence proof which only verifies against no leaves: leaves of the max namespace can't be proven
+    /// to be complete. Use [`NamespaceMerkleTree::get_range_with_proof`] and
+    /// [`NamespaceProof::verify_range`] to prove their inclusion instead.
     pub fn get_namespace_with_proof(
         &mut self,
         namespace: NamespaceId<NS_ID_SIZE>,

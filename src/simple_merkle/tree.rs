@@ -165,11 +165,9 @@ pub trait MerkleHash {
     /// Hashes two digests into one. This operation *should* be domain separated.
     fn hash_nodes(&self, l: &Self::Output, r: &Self::Output) -> Self::Output;
     /// Checks that two digests can be hashed together by [`MerkleHash::hash_nodes`]. This is called
-    /// before hashing any pair of nodes derived from untrusted input (such as a proof), so hashers
-    /// whose `hash_nodes` can panic must override it to reject those inputs instead.
-    fn validate_nodes(&self, _l: &Self::Output, _r: &Self::Output) -> Result<(), RangeProofError> {
-        Ok(())
-    }
+    /// before hashing any pair of nodes derived from untrusted input (such as a proof), and must
+    /// reject every input on which `hash_nodes` would panic.
+    fn validate_nodes(&self, l: &Self::Output, r: &Self::Output) -> Result<(), RangeProofError>;
 }
 
 impl<Db, M> MerkleTree<Db, M>
