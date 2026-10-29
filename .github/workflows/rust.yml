@@ -65,7 +65,7 @@ jobs:
       - name: cargo install zepter
         uses: taiki-e/install-action@v2
         with:
-          tool: zepter
+          tool: zepter@1.88.2
       - name: Check feature propagation
         run: zepter run check
 

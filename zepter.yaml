@@ -26,9 +26,6 @@ workflows:
       "--left-side-feature-missing=ignore",
       # Ignore the case that `A` it outside of the workspace. Otherwise it will report errors in external dependencies that we have no influence on.
       "--left-side-outside-workspace=ignore",
-      # Some features imply that they activate a specific dependency as non-optional. Otherwise the default behaviour with a `?` is used.
-      "--feature-enables-dep=serde:serde",
-      "--feature-enables-dep=borsh:borsh",
       # Show the paths of failed crates to have them clickable in the terminal: 
       "--show-path",
     ]
