@@ -101,7 +101,6 @@ fn check_proof_completeness<const NS_ID_SIZE: usize>(
 pub struct NamespaceMerkleTree<Db, M: MerkleHash, const NS_ID_SIZE: usize> {
     namespace_ranges: hash_or_btree_map::Map<NamespaceId<NS_ID_SIZE>, Range<usize>>,
     highest_ns: NamespaceId<NS_ID_SIZE>,
-    ignore_max_ns: bool,
     inner: MerkleTree<Db, M>,
 }
 
@@ -126,9 +125,12 @@ where
         Self {
             namespace_ranges: Default::default(),
             highest_ns: NamespaceId([0u8; NS_ID_SIZE]),
-            ignore_max_ns: hasher.ignores_max_ns(),
             inner: MerkleTree::<Db, M>::with_hasher(hasher),
         }
+    }
+
+    fn ignore_max_ns(&self) -> bool {
+        self.inner.hasher().ignores_max_ns()
     }
 
     /// Adds a leaf to the namespaced merkle tree. Leaves must be pushed in namespace order.
@@ -199,17 +201,12 @@ where
             }
         }
 
-        let num_left_siblings = compute_num_left_siblings(leaves_start_idx);
-        if proof.len() < num_left_siblings {
-            return Err(RangeProofError::MissingProofNode);
-        }
-
-        let proof_completeness = check_proof_completeness(leaves, proof, num_left_siblings);
-
+        // The inner check ensures the proof contains every left sibling, which the completeness check relies on
         self.inner
             .check_range_proof(root, leaves, proof, leaves_start_idx)?;
 
-        Ok(proof_completeness)
+        let num_left_siblings = compute_num_left_siblings(leaves_start_idx);
+        Ok(check_proof_completeness(leaves, proof, num_left_siblings))
     }
 
     /// Creates a range proof providing the sibling hashes required to show that a set of values really does occur in
@@ -242,7 +239,7 @@ where
             leaves,
             NamespaceProof::PresenceProof {
                 proof,
-                ignore_max_ns: self.ignore_max_ns,
+                ignore_max_ns: self.ignore_max_ns(),
             },
         )
     }
@@ -287,7 +284,7 @@ where
         if !self.root().contains::<M>(namespace) {
             return NamespaceProof::AbsenceProof {
                 proof: Default::default(),
-                ignore_max_ns: self.ignore_max_ns,
+                ignore_max_ns: self.ignore_max_ns(),
                 leaf: None,
             };
         }
@@ -296,7 +293,7 @@ where
         if let Some(leaf_range) = self.namespace_ranges.get(&namespace) {
             return NamespaceProof::PresenceProof {
                 proof: self.inner.build_range_proof(leaf_range.clone()),
-                ignore_max_ns: self.ignore_max_ns,
+                ignore_max_ns: self.ignore_max_ns(),
             };
         }
 
@@ -319,7 +316,7 @@ where
 
         let mut proof = NamespaceProof::PresenceProof {
             proof,
-            ignore_max_ns: self.ignore_max_ns,
+            ignore_max_ns: self.ignore_max_ns(),
         };
         proof.convert_to_absence_proof(self.inner.leaves()[idx].hash().clone());
         proof
@@ -374,25 +371,19 @@ where
                         "provided leaf must have namespace greater than the namespace which is being proven absent",
                     ));
                 }
-                let num_left_siblings = compute_num_left_siblings(proof.start_idx() as usize);
-
-                // Check that the namespace actually follows the closest sibling
-                if num_left_siblings > 0 {
-                    let rightmost_left_sibling = proof
-                        .siblings()
-                        .get(num_left_siblings - 1)
-                        .ok_or(RangeProofError::MissingProofNode)?;
-                    if rightmost_left_sibling.max_namespace() >= namespace {
-                        return Err(RangeProofError::MalformedProof("proven namespace must be greater than the namespace of the rightmost left sibling"));
-                    }
-                }
-                // Then, check that the root is real
+                // Check that the root is real, which also ensures the proof contains every left sibling
                 self.inner.check_range_proof(
                     root,
                     &[leaf],
                     proof.siblings(),
                     proof.start_idx() as usize,
                 )?;
+                // Then, check that the namespace actually follows the closest sibling
+                if let Some(rightmost_left_sibling) = proof.rightmost_left_sibling() {
+                    if rightmost_left_sibling.max_namespace() >= namespace {
+                        return Err(RangeProofError::MalformedProof("proven namespace must be greater than the namespace of the rightmost left sibling"));
+                    }
+                }
             }
             NamespaceProof::PresenceProof { .. } => {
                 if !root.contains::<M>(namespace) {
@@ -430,7 +421,6 @@ where
         Self {
             namespace_ranges: Default::default(),
             highest_ns: NamespaceId::default(),
-            ignore_max_ns: true,
             inner: Default::default(),
         }
     }
@@ -641,7 +631,7 @@ mod tests {
             for j in 0..=i {
                 let proof_nmt = NamespaceProof::PresenceProof {
                     proof: tree.build_range_proof(j..i),
-                    ignore_max_ns: tree.ignore_max_ns,
+                    ignore_max_ns: tree.ignore_max_ns(),
                 };
                 for k in (j + 1)..=i {
                     for l in j..=k {
@@ -711,7 +701,7 @@ mod tests {
                         let narrowed_proof_simple = proof.narrow_range_with_hasher(
                             &left_hashes,
                             &right_hashes,
-                            NamespacedSha2Hasher::with_ignore_max_ns(tree.ignore_max_ns),
+                            NamespacedSha2Hasher::with_ignore_max_ns(tree.ignore_max_ns()),
                         );
                         if k == l {
                             // Cannot prove the empty range!

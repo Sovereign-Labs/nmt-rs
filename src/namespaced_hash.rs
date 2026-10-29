@@ -99,8 +99,18 @@ impl<const NS_ID_SIZE: usize> MerkleHash for NamespacedSha2Hasher<NS_ID_SIZE> {
     }
 
     fn hash_nodes(&self, left: &Self::Output, right: &Self::Output) -> Self::Output {
-        self.validate_nodes(left, right)
-            .expect("Invalid nodes: left max namespace must be <= right min namespace");
+        self.try_hash_nodes(left, right)
+            .expect("Invalid nodes: left max namespace must be <= right min namespace")
+    }
+
+    fn try_hash_nodes(
+        &self,
+        left: &Self::Output,
+        right: &Self::Output,
+    ) -> Result<Self::Output, RangeProofError> {
+        if left.max_namespace() > right.min_namespace() {
+            return Err(RangeProofError::MalformedTree);
+        }
         let mut hasher = DefaultHasher::new_with_prefix(INTERNAL_NODE_DOMAIN_SEPARATOR);
         let max_nsid = NamespaceId::<NS_ID_SIZE>::max_id();
 
@@ -119,18 +129,7 @@ impl<const NS_ID_SIZE: usize> MerkleHash for NamespacedSha2Hasher<NS_ID_SIZE> {
         hasher.update(right.iter().collect::<Vec<_>>());
 
         output.set_hash(hasher.finalize().as_ref());
-        output
-    }
-
-    fn validate_nodes(
-        &self,
-        left: &Self::Output,
-        right: &Self::Output,
-    ) -> Result<(), RangeProofError> {
-        if left.max_namespace() > right.min_namespace() {
-            return Err(RangeProofError::MalformedTree);
-        }
-        Ok(())
+        Ok(output)
     }
 }
 

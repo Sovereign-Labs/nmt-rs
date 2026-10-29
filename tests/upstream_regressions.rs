@@ -7,6 +7,8 @@ use nmt_rs::{
 type Hasher<const N: usize> = NamespacedSha2Hasher<N>;
 type Tree<const N: usize> = NamespaceMerkleTree<MemDb<NamespacedHash<N>>, Hasher<N>, N>;
 
+const NO_LEAVES: &[&[u8]] = &[];
+
 fn tree<const N: usize>(namespaces: &[u8], ignore_max_ns: bool) -> Tree<N> {
     let mut tree = Tree::with_hasher(Hasher::with_ignore_max_ns(ignore_max_ns));
     for &namespace in namespaces {
@@ -47,7 +49,7 @@ fn malformed_empty_proof() -> NamespaceProof<Hasher<1>, 1> {
 fn empty_proof_accepts_absent_namespace_and_empty_leaves() {
     let root = tree::<1>(&[1, 2, 3, 4], true).root();
     assert!(empty_proof()
-        .verify_complete_namespace(&root, &[] as &[&[u8]], NamespaceId([0]))
+        .verify_complete_namespace(&root, NO_LEAVES, NamespaceId([0]))
         .is_ok());
 }
 
@@ -57,7 +59,7 @@ fn empty_proof_accepts_absent_namespace_and_empty_leaves() {
 fn empty_proof_rejects_extra_siblings_for_present_namespace() {
     let root = tree::<1>(&[1, 2, 3, 4], true).root();
     assert!(malformed_empty_proof()
-        .verify_complete_namespace(&root, &[] as &[&[u8]], NamespaceId([1]))
+        .verify_complete_namespace(&root, NO_LEAVES, NamespaceId([1]))
         .is_err());
 }
 
@@ -77,7 +79,7 @@ fn empty_proof_rejects_nonempty_leaves_for_absent_namespace() {
 fn empty_proof_rejects_present_namespace() {
     let root = tree::<1>(&[1, 2, 3, 4], true).root();
     assert!(empty_proof()
-        .verify_complete_namespace(&root, &[] as &[&[u8]], NamespaceId([1]))
+        .verify_complete_namespace(&root, NO_LEAVES, NamespaceId([1]))
         .is_err());
 }
 
@@ -86,7 +88,7 @@ fn empty_proof_rejects_present_namespace() {
 #[test]
 fn empty_proof_accepts_empty_tree_and_empty_leaves() {
     assert!(empty_proof()
-        .verify_complete_namespace(&Hasher::<1>::EMPTY_ROOT, &[] as &[&[u8]], NamespaceId([0]))
+        .verify_complete_namespace(&Hasher::<1>::EMPTY_ROOT, NO_LEAVES, NamespaceId([0]))
         .is_ok());
 }
 
@@ -95,7 +97,7 @@ fn empty_proof_accepts_empty_tree_and_empty_leaves() {
 #[test]
 fn empty_proof_rejects_extra_siblings_for_empty_tree() {
     assert!(malformed_empty_proof()
-        .verify_complete_namespace(&Hasher::<1>::EMPTY_ROOT, &[] as &[&[u8]], NamespaceId([1]))
+        .verify_complete_namespace(&Hasher::<1>::EMPTY_ROOT, NO_LEAVES, NamespaceId([1]))
         .is_err());
 }
 
@@ -115,7 +117,7 @@ fn empty_tree_rejects_reversed_presence_range_with_siblings() {
     let mut proof = malformed_empty_proof();
     merkle_proof(&mut proof).range.start = 9;
     assert!(proof
-        .verify_complete_namespace(&Hasher::<1>::EMPTY_ROOT, &[] as &[&[u8]], NamespaceId([1]))
+        .verify_complete_namespace(&Hasher::<1>::EMPTY_ROOT, NO_LEAVES, NamespaceId([1]))
         .is_err());
 }
 
@@ -154,7 +156,7 @@ fn absence_rejects_empty_siblings_at_nonzero_start() {
     assert_eq!(proof.start_idx(), 8);
     merkle_proof(&mut proof).siblings.clear();
     assert!(proof
-        .verify_complete_namespace(&tree.root(), &[] as &[&[u8]], NamespaceId([4]))
+        .verify_complete_namespace(&tree.root(), NO_LEAVES, NamespaceId([4]))
         .is_err());
 }
 
@@ -180,7 +182,7 @@ fn absence_rejects_insufficient_siblings() {
     assert_eq!(proof.start_idx(), 12);
     merkle_proof(&mut proof).siblings.truncate(1);
     assert!(proof
-        .verify_complete_namespace(&tree.root(), &[] as &[&[u8]], NamespaceId([4]))
+        .verify_complete_namespace(&tree.root(), NO_LEAVES, NamespaceId([4]))
         .is_err());
 }
 
@@ -304,7 +306,7 @@ fn absence_rejects_empty_range_with_witness() {
     let mut proof = tree.get_namespace_proof(NamespaceId([3]));
     merkle_proof(&mut proof).range.end = proof.start_idx();
     assert!(proof
-        .verify_complete_namespace(&tree.root(), &[] as &[&[u8]], NamespaceId([3]))
+        .verify_complete_namespace(&tree.root(), NO_LEAVES, NamespaceId([3]))
         .is_err());
 }
 
@@ -316,7 +318,7 @@ fn absence_rejects_reversed_range_with_witness() {
     let mut proof = tree.get_namespace_proof(NamespaceId([3]));
     merkle_proof(&mut proof).range.end = 0;
     assert!(proof
-        .verify_complete_namespace(&tree.root(), &[] as &[&[u8]], NamespaceId([3]))
+        .verify_complete_namespace(&tree.root(), NO_LEAVES, NamespaceId([3]))
         .is_err());
 }
 
@@ -328,7 +330,7 @@ fn absence_rejects_range_larger_than_witness() {
     let mut proof = tree.get_namespace_proof(NamespaceId([3]));
     merkle_proof(&mut proof).range.end += 1;
     assert!(proof
-        .verify_complete_namespace(&tree.root(), &[] as &[&[u8]], NamespaceId([3]))
+        .verify_complete_namespace(&tree.root(), NO_LEAVES, NamespaceId([3]))
         .is_err());
 }
 
@@ -409,12 +411,12 @@ impl MerkleHash for ConfiguredHasher {
         self.inner.hash_nodes(left, right)
     }
 
-    fn validate_nodes(
+    fn try_hash_nodes(
         &self,
         left: &Self::Output,
         right: &Self::Output,
-    ) -> Result<(), RangeProofError> {
-        self.inner.validate_nodes(left, right)
+    ) -> Result<Self::Output, RangeProofError> {
+        self.inner.try_hash_nodes(left, right)
     }
 }
 
@@ -495,7 +497,7 @@ fn custom_hasher_proofs_verify_with_hasher() {
 
     let proof = tree.get_namespace_proof(NamespaceId([3]));
     assert!(proof
-        .verify_complete_namespace_with_hasher(&root, &[] as &[&[u8]], NamespaceId([3]), hasher())
+        .verify_complete_namespace_with_hasher(&root, NO_LEAVES, NamespaceId([3]), hasher())
         .is_ok());
 }
 
