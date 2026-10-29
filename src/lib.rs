@@ -141,8 +141,11 @@ where
         if namespace < self.highest_ns {
             return Err("Leaves' namespaces should be inserted in ascending order");
         }
-        let leaf =
-            LeafWithHash::new_with_namespace(raw_data.to_vec(), namespace, self.ignore_max_ns);
+        let leaf = LeafWithHash::with_namespace_and_hasher(
+            raw_data.to_vec(),
+            namespace,
+            self.inner.hasher(),
+        );
         self.highest_ns = namespace;
         self.inner.push_leaf_with_hash(leaf);
 
@@ -197,6 +200,9 @@ where
         }
 
         let num_left_siblings = compute_num_left_siblings(leaves_start_idx);
+        if proof.len() < num_left_siblings {
+            return Err(RangeProofError::MissingProofNode);
+        }
 
         let proof_completeness = check_proof_completeness(leaves, proof, num_left_siblings);
 
@@ -320,22 +326,40 @@ where
         namespace: NamespaceId<NS_ID_SIZE>,
         proof: &NamespaceProof<M, NS_ID_SIZE>,
     ) -> Result<(), RangeProofError> {
-        if root.is_empty_root::<M>() && raw_leaves.is_empty() {
-            return Ok(());
+        // The empty tree can only be proven by an empty proof with no leaves
+        if root.is_empty_root::<M>() {
+            if proof.is_empty_proof() && raw_leaves.is_empty() {
+                return Ok(());
+            }
+            return Err(RangeProofError::MalformedProof(
+                "the empty tree must be proven by an empty proof with no leaves",
+            ));
         }
 
         match proof {
             NamespaceProof::AbsenceProof { leaf, .. } => {
-                if !root.contains::<M>(namespace) {
-                    return Ok(());
-                }
-                let leaf = leaf.clone().ok_or(RangeProofError::MalformedProof(
-                    "Absence proof was inside tree range but did not contain a leaf",
-                ))?;
                 // Check that they haven't provided an absence proof for a non-empty namespace
                 if !raw_leaves.is_empty() {
                     return Err(RangeProofError::MalformedProof(
                         "provided an absence proof for a non-empty namespace",
+                    ));
+                }
+                // A namespace outside the range covered by the root is absent by definition
+                if !root.contains::<M>(namespace) {
+                    if proof.is_empty_proof() {
+                        return Ok(());
+                    }
+                    return Err(RangeProofError::MalformedProof(
+                        "absence proof for a namespace outside the root's range must be empty",
+                    ));
+                }
+                let leaf = leaf.clone().ok_or(RangeProofError::MalformedProof(
+                    "Absence proof was inside tree range but did not contain a leaf",
+                ))?;
+                // Check that the proof covers exactly the provided leaf
+                if proof.start_idx().checked_add(1) != Some(proof.end_idx()) {
+                    return Err(RangeProofError::MalformedProof(
+                        "absence proof must cover exactly one leaf",
                     ));
                 }
                 // Check that the provided namespace actually precedes the leaf
@@ -347,9 +371,11 @@ where
                 let num_left_siblings = compute_num_left_siblings(proof.start_idx() as usize);
 
                 // Check that the namespace actually follows the closest sibling
-                let siblings = proof.siblings();
                 if num_left_siblings > 0 {
-                    let rightmost_left_sibling = &siblings[num_left_siblings - 1];
+                    let rightmost_left_sibling = proof
+                        .siblings()
+                        .get(num_left_siblings - 1)
+                        .ok_or(RangeProofError::MissingProofNode)?;
                     if rightmost_left_sibling.max_namespace() >= namespace {
                         return Err(RangeProofError::MalformedProof("proven namespace must be greater than the namespace of the rightmost left sibling"));
                     }
@@ -362,14 +388,15 @@ where
                     proof.start_idx() as usize,
                 )?;
             }
-            NamespaceProof::PresenceProof { ignore_max_ns, .. } => {
+            NamespaceProof::PresenceProof { .. } => {
                 if !root.contains::<M>(namespace) {
                     return Err(RangeProofError::TreeDoesNotContainLeaf);
                 }
                 let leaf_hashes: Vec<NamespacedHash<NS_ID_SIZE>> = raw_leaves
                     .iter()
                     .map(|data| {
-                        M::with_ignore_max_ns(*ignore_max_ns)
+                        self.inner
+                            .hasher()
                             .hash_leaf_with_namespace(data.as_ref(), namespace)
                     })
                     .collect();
@@ -784,9 +811,22 @@ mod tests {
 
         let root = tree.root();
         let (leaves, proof) = tree.get_namespace_with_proof(max_namespace);
-        assert!(proof
-            .verify_complete_namespace(&root, &leaves, max_namespace)
-            .is_ok());
+        if root.contains::<NamespacedSha2Hasher<NS_ID_SIZE>>(max_namespace) {
+            // The tree contains only max namespace leaves, so the root's namespace range covers them
+            assert!(proof
+                .verify_complete_namespace(&root, &leaves, max_namespace)
+                .is_ok());
+        } else {
+            // The max namespace is ignored when computing the root's namespace range, so its leaves
+            // can't be proven: only an empty proof with no leaves verifies, matching celestiaorg/nmt.
+            assert!(proof.is_empty_proof());
+            assert!(proof
+                .verify_complete_namespace(&root, &leaves, max_namespace)
+                .is_err());
+            assert!(proof
+                .verify_complete_namespace(&root, &[] as &[&[u8]], max_namespace)
+                .is_ok());
+        }
     }
 
     fn test_namespace_verification_impl<const NS_ID_SIZE: usize>() {

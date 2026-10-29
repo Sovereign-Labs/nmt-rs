@@ -53,13 +53,29 @@ where
         raw_leaves: &[impl AsRef<[u8]>],
         namespace: NamespaceId<NS_ID_SIZE>,
     ) -> Result<(), RangeProofError> {
+        self.verify_complete_namespace_with_hasher(
+            root,
+            raw_leaves,
+            namespace,
+            M::with_ignore_max_ns(self.ignores_max_ns()),
+        )
+    }
+
+    /// Verify that the provided *raw* leaves are a complete namespace, hashing with the provided hasher.
+    /// This may be a proof of presence or absence.
+    pub fn verify_complete_namespace_with_hasher(
+        &self,
+        root: &NamespacedHash<NS_ID_SIZE>,
+        raw_leaves: &[impl AsRef<[u8]>],
+        namespace: NamespaceId<NS_ID_SIZE>,
+        hasher: M,
+    ) -> Result<(), RangeProofError> {
+        self.check_hasher(&hasher)?;
         if self.is_of_presence() && raw_leaves.len() != self.range_len() {
             return Err(RangeProofError::WrongAmountOfLeavesProvided);
         }
 
-        let tree = NamespaceMerkleTree::<NoopDb, M, NS_ID_SIZE>::with_hasher(
-            M::with_ignore_max_ns(self.ignores_max_ns()),
-        );
+        let tree = NamespaceMerkleTree::<NoopDb, M, NS_ID_SIZE>::with_hasher(hasher);
         tree.verify_namespace(root, raw_leaves, namespace, self)
     }
 
@@ -70,6 +86,24 @@ where
         raw_leaves: &[impl AsRef<[u8]>],
         leaf_namespace: NamespaceId<NS_ID_SIZE>,
     ) -> Result<(), RangeProofError> {
+        self.verify_range_with_hasher(
+            root,
+            raw_leaves,
+            leaf_namespace,
+            M::with_ignore_max_ns(self.ignores_max_ns()),
+        )
+    }
+
+    /// Verify a that the provided *raw* leaves are a (1) present and (2) form a contiguous subset of some namespace,
+    /// hashing with the provided hasher.
+    pub fn verify_range_with_hasher(
+        &self,
+        root: &NamespacedHash<NS_ID_SIZE>,
+        raw_leaves: &[impl AsRef<[u8]>],
+        leaf_namespace: NamespaceId<NS_ID_SIZE>,
+        hasher: M,
+    ) -> Result<(), RangeProofError> {
+        self.check_hasher(&hasher)?;
         if self.is_of_absence() {
             return Err(RangeProofError::MalformedProof(
                 "Cannot prove that a partial namespace is absent",
@@ -82,14 +116,9 @@ where
 
         let leaf_hashes: Vec<_> = raw_leaves
             .iter()
-            .map(|data| {
-                M::with_ignore_max_ns(self.ignores_max_ns())
-                    .hash_leaf_with_namespace(data.as_ref(), leaf_namespace)
-            })
+            .map(|data| hasher.hash_leaf_with_namespace(data.as_ref(), leaf_namespace))
             .collect();
-        let tree = NamespaceMerkleTree::<NoopDb, M, NS_ID_SIZE>::with_hasher(
-            M::with_ignore_max_ns(self.ignores_max_ns()),
-        );
+        let tree = NamespaceMerkleTree::<NoopDb, M, NS_ID_SIZE>::with_hasher(hasher);
         tree.inner.check_range_proof(
             root,
             &leaf_hashes,
@@ -113,6 +142,23 @@ where
         right_extra_raw_leaves: &[L],
         leaf_namespace: NamespaceId<NS_ID_SIZE>,
     ) -> Result<Self, RangeProofError> {
+        self.narrow_range_with_hasher(
+            left_extra_raw_leaves,
+            right_extra_raw_leaves,
+            leaf_namespace,
+            M::with_ignore_max_ns(self.ignores_max_ns()),
+        )
+    }
+
+    /// Narrows the proof range, hashing with the provided hasher. See [`NamespaceProof::narrow_range`].
+    pub fn narrow_range_with_hasher<L: AsRef<[u8]>>(
+        &self,
+        left_extra_raw_leaves: &[L],
+        right_extra_raw_leaves: &[L],
+        leaf_namespace: NamespaceId<NS_ID_SIZE>,
+        hasher: M,
+    ) -> Result<Self, RangeProofError> {
+        self.check_hasher(&hasher)?;
         if self.is_of_absence() {
             return Err(RangeProofError::MalformedProof(
                 "Cannot narrow the range of an absence proof",
@@ -121,10 +167,7 @@ where
 
         let leaves_to_hashes = |l: &[L]| -> Vec<NamespacedHash<NS_ID_SIZE>> {
             l.iter()
-                .map(|data| {
-                    M::with_ignore_max_ns(self.ignores_max_ns())
-                        .hash_leaf_with_namespace(data.as_ref(), leaf_namespace)
-                })
+                .map(|data| hasher.hash_leaf_with_namespace(data.as_ref(), leaf_namespace))
                 .collect()
         };
         let left_extra_hashes = leaves_to_hashes(left_extra_raw_leaves);
@@ -133,13 +176,23 @@ where
         let proof = self.merkle_proof().narrow_range_with_hasher(
             &left_extra_hashes,
             &right_extra_hashes,
-            M::with_ignore_max_ns(self.ignores_max_ns()),
+            hasher,
         )?;
 
         Ok(Self::PresenceProof {
             proof,
             ignore_max_ns: self.ignores_max_ns(),
         })
+    }
+
+    /// Checks that the hasher treats the max namespace the same way as the proof
+    fn check_hasher(&self, hasher: &M) -> Result<(), RangeProofError> {
+        if hasher.ignores_max_ns() != self.ignores_max_ns() {
+            return Err(RangeProofError::MalformedProof(
+                "hasher and proof disagree on whether to ignore the max namespace",
+            ));
+        }
+        Ok(())
     }
 
     /// Convert a proof of the presence of some leaf to the proof of the absence of another leaf
@@ -212,6 +265,13 @@ where
             Self::AbsenceProof { ignore_max_ns, .. }
             | Self::PresenceProof { ignore_max_ns, .. } => *ignore_max_ns,
         }
+    }
+
+    /// Returns true if the proof covers no leaves and contains no siblings or witness leaf.
+    /// This is the only valid proof for the empty tree, or for a namespace outside the range of the root.
+    pub fn is_empty_proof(&self) -> bool {
+        let has_leaf = matches!(self, Self::AbsenceProof { leaf: Some(_), .. });
+        self.start_idx() == 0 && self.end_idx() == 0 && self.siblings().is_empty() && !has_leaf
     }
 
     /// Returns true if the proof is an absence proof

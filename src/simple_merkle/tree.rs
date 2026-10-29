@@ -164,6 +164,12 @@ pub trait MerkleHash {
     fn hash_leaf(&self, data: &[u8]) -> Self::Output;
     /// Hashes two digests into one. This operation *should* be domain separated.
     fn hash_nodes(&self, l: &Self::Output, r: &Self::Output) -> Self::Output;
+    /// Checks that two digests can be hashed together by [`MerkleHash::hash_nodes`]. This is called
+    /// before hashing any pair of nodes derived from untrusted input (such as a proof), so hashers
+    /// whose `hash_nodes` can panic must override it to reject those inputs instead.
+    fn validate_nodes(&self, _l: &Self::Output, _r: &Self::Output) -> Result<(), RangeProofError> {
+        Ok(())
+    }
 }
 
 impl<Db, M> MerkleTree<Db, M>
@@ -224,6 +230,11 @@ where
     /// Returns all leaves in the tree
     pub fn leaves(&self) -> &[LeafWithHash<M>] {
         &self.leaves[..]
+    }
+
+    /// Returns the hasher used by the tree
+    pub fn hasher(&self) -> &M {
+        &self.hasher
     }
 
     fn compute_root(&mut self, leaf_range: Range<usize>) -> M::Output {
@@ -375,6 +386,7 @@ where
                 .clone()
         };
 
+        self.hasher.validate_nodes(&left, &right)?;
         Ok(self.hasher.hash_nodes(&left, &right))
     }
 
@@ -511,6 +523,7 @@ where
                 let split_point = next_smaller_po2(range.len()) + range.start;
                 let left = local_subroot_from_leaves(range.start..split_point, params)?;
                 let right = local_subroot_from_leaves(split_point..range.end, params)?;
+                params.hasher.validate_nodes(&left, &right)?;
                 Ok(params.hasher.hash_nodes(&left, &right))
             }
         }
@@ -563,6 +576,7 @@ where
                 extra_leaves,
                 leaves_start_idx,
             )?;
+            self.hasher.validate_nodes(&left, &right)?;
             Ok(self.hasher.hash_nodes(&left, &right))
         }
     }

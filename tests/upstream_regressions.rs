@@ -459,3 +459,49 @@ fn custom_hasher_preserves_configuration_for_two_leaf_root() {
     tree.push_leaf(b"leaf", NamespaceId([2])).unwrap();
     assert_eq!(tree.root(), expected);
 }
+
+// Original Rust regression: proofs from a tree with a configured hasher verify with that hasher.
+#[test]
+fn custom_hasher_proofs_verify_with_hasher() {
+    let hasher = || ConfiguredHasher {
+        inner: Hasher::with_ignore_max_ns(true),
+        salt: 42,
+    };
+    let mut tree = NamespaceMerkleTree::<MemDb<NamespacedHash<1>>, _, 1>::with_hasher(hasher());
+    for namespace in [1, 2, 2, 4] {
+        tree.push_leaf(b"leaf", NamespaceId([namespace])).unwrap();
+    }
+    let root = tree.root();
+
+    let (leaves, proof) = tree.get_namespace_with_proof(NamespaceId([2]));
+    assert!(proof
+        .verify_complete_namespace_with_hasher(&root, &leaves, NamespaceId([2]), hasher())
+        .is_ok());
+    assert!(proof
+        .verify_range_with_hasher(&root, &leaves, NamespaceId([2]), hasher())
+        .is_ok());
+    // The default hasher for the proof drops the salt, so it computes a different root
+    assert!(proof
+        .verify_complete_namespace(&root, &leaves, NamespaceId([2]))
+        .is_err());
+
+    let proof = tree.get_namespace_proof(NamespaceId([3]));
+    assert!(proof
+        .verify_complete_namespace_with_hasher(&root, &[] as &[&[u8]], NamespaceId([3]), hasher())
+        .is_ok());
+}
+
+// Original Rust regression: the verifier's hasher must agree with the proof on ignoring the max namespace.
+#[test]
+fn verification_rejects_hasher_with_mismatched_ignore_max_ns() {
+    let mut tree = tree::<1>(&[1, 2, 3, 4], true);
+    let (leaves, proof) = tree.get_namespace_with_proof(NamespaceId([2]));
+    assert!(proof
+        .verify_complete_namespace_with_hasher(
+            &tree.root(),
+            &leaves,
+            NamespaceId([2]),
+            Hasher::with_ignore_max_ns(false),
+        )
+        .is_err());
+}
