@@ -21,6 +21,15 @@ borsh = { version = "1", features = ["derive"] }
 serde_json = "1.0.96"
 postcard = { version = "1.0.4", features = ["use-std"] }
 tendermint = { version = "0.41.0" }
+criterion = "0.8"
+
+[[bench]]
+name = "nmt"
+harness = false
+
+[[bench]]
+name = "go_parity"
+harness = false
 
 [features]
 default = ["std"]
