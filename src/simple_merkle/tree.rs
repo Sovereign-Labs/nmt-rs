@@ -315,9 +315,9 @@ where
         let split_point = next_smaller_po2(subtrie_range.len()) + subtrie_range.start;
         // If the range to prove, doesn't overlap with the left subtrie, add the left subtrie root to the proof.
         // We're now done with the left subtrie
+        // If the range of nodes to prove completely contains the left subtrie, then we don't need to recurse.
         if range_to_prove.start >= split_point {
             out.push(self.subtree_root(subtrie_range.start..split_point).clone())
-            //  If the range of nodes to prove completely contains the left subtrie, then we don't need to recurse.
         } else if range_to_prove.start > subtrie_range.start || range_to_prove.end < split_point {
             self.build_range_proof_inner(
                 range_to_prove.clone(),

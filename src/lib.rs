@@ -162,18 +162,18 @@ where
     /// Returns the range of leaves in the given namespace, which is empty if the namespace has no
     /// leaves. In that case, the range starts at the index the namespace would be inserted at.
     fn namespace_range(&self, namespace: NamespaceId<NS_ID_SIZE>) -> Range<usize> {
-        let idx = self
-            .namespace_starts
-            .partition_point(|(ns, _)| *ns < namespace);
         let start_of = |idx: usize| {
             self.namespace_starts
                 .get(idx)
-                .map_or(self.leaves().len(), |(_, start)| *start)
+                .map_or(self.leaves().len(), |&(_, start)| start)
         };
-        match self.namespace_starts.get(idx) {
-            Some((ns, start)) if *ns == namespace => *start..start_of(idx + 1),
-            _ => start_of(idx)..start_of(idx),
-        }
+        let first = self
+            .namespace_starts
+            .partition_point(|(ns, _)| *ns < namespace);
+        let end = self
+            .namespace_starts
+            .partition_point(|(ns, _)| *ns <= namespace);
+        start_of(first)..start_of(end)
     }
 
     /// Returns the root of the tree, computing it if necessary. Repeated calls return a cached root.
