@@ -20,7 +20,7 @@ borsh = { version = "1", default-features = false, features = ["derive"], option
 borsh = { version = "1", features = ["derive"] }
 serde_json = "1.0.96"
 postcard = { version = "1.0.4", features = ["use-std"] }
-tendermint = { version = "0.35.0" }
+tendermint = { version = "0.41.0" }
 
 [features]
 default = ["std"]
