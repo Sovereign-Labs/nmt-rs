@@ -28,7 +28,13 @@ fn leaf_ns(idx: usize) -> NamespaceId<NS_ID_SIZE> {
 }
 
 fn leaves(n: usize) -> Vec<Vec<u8>> {
-    (0..n).map(|i| vec![i as u8; SHARE_SIZE]).collect()
+    (0..n)
+        .map(|i| {
+            let mut leaf = vec![0; SHARE_SIZE];
+            leaf[..8].copy_from_slice(&(i as u64).to_be_bytes());
+            leaf
+        })
+        .collect()
 }
 
 fn celestia_tree(leaves: &[Vec<u8>]) -> CelestiaNmt {

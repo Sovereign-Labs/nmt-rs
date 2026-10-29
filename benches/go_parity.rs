@@ -7,7 +7,7 @@
 
 use std::hint::black_box;
 
-use criterion::{criterion_group, criterion_main, Criterion, SamplingMode};
+use criterion::{criterion_group, criterion_main, Criterion};
 use nmt_rs::{
     simple_merkle::db::MemDb, NamespaceId, NamespaceMerkleHasher, NamespaceMerkleTree,
     NamespacedHash, NamespacedSha2Hasher,
@@ -67,9 +67,6 @@ fn compute_root<const NS: usize>(leaves: &Leaves<NS>) -> NamespacedHash<NS> {
 /// `BenchmarkComputeRoot`
 fn bench_compute_root(c: &mut Criterion) {
     let mut group = c.benchmark_group("ComputeRoot");
-    // Flat sampling keeps the 20k-leaf case from taking minutes.
-    group.sampling_mode(SamplingMode::Flat);
-
     for (num_leaves, data_size) in [(64, 256), (128, 256), (256, 256), (20_000, 512)] {
         let leaves = rand_namespaced_leaves::<8>(num_leaves, data_size);
         let name = match num_leaves {
