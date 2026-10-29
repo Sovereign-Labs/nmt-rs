@@ -180,13 +180,11 @@ where
                 }
                 return Err(RangeProofError::NoLeavesProvided);
             }
-            1 => {
-                if proof.is_empty() {
-                    if &leaves[0] == root && leaves_start_idx == 0 {
-                        return Ok(RangeProofType::Complete);
-                    }
-                    return Err(RangeProofError::TreeDoesNotContainLeaf);
+            1 if proof.is_empty() => {
+                if &leaves[0] == root && leaves_start_idx == 0 {
+                    return Ok(RangeProofType::Complete);
                 }
+                return Err(RangeProofError::TreeDoesNotContainLeaf);
             }
             _ => {}
         };
