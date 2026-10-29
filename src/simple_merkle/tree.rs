@@ -517,7 +517,7 @@ where
         extra_leaves: &[M::Output],
         leaves_start_idx: usize,
     ) -> Result<M::Output, RangeProofError> {
-        // Helper that essentially replicates `compute_root`, but with no side-effects and with
+        // Helper that essentially replicates `compute_subtree_root`, but with no side-effects and with
         // only a partial leaf set
         struct SubrootParams<'a, M: MerkleHash> {
             extra_leaves: &'a [M::Output],
@@ -658,7 +658,7 @@ where
     /// A range proof of build_range_proof(1..3) would return the vector [C, F], since those two hashes, together
     /// with the two leaves in the range, are sufficient to reconstruct the tree
     pub fn build_range_proof(&mut self, leaf_range: Range<usize>) -> Proof<M> {
-        // Calculate the root to ensure that the preimage db is populated
+        // Calculate the root to ensure that the inner node cache is populated
         let root = self.root();
         let mut proof = Vec::new();
         let start = leaf_range.start as u32;
