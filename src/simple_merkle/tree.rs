@@ -1,8 +1,10 @@
-use super::db::{LeafWithHash, Node, PreimageDb};
+use super::db::{LeafWithHash, PreimageDb};
 use super::error::RangeProofError;
 use super::proof::Proof;
 use super::utils::{compute_num_left_siblings, compute_tree_size};
-use crate::maybestd::{boxed::Box, fmt::Debug, hash::Hash, ops::Range, vec::Vec};
+use crate::maybestd::{
+    boxed::Box, fmt::Debug, hash::Hash, marker::PhantomData, mem, ops::Range, vec::Vec,
+};
 
 /// Manually implement the method we need from #[feature(slice_take)] to
 /// allow building with stable;
@@ -46,16 +48,21 @@ struct ProofNarrowingParams<'a, M: MerkleHash> {
     leaves_start_idx: usize,
 }
 
-/// Implements an RFC 6962 compatible merkle tree over an in-memory data store which maps preimages to hashes.
+/// Implements an RFC 6962 compatible merkle tree.
+///
+/// Inner node hashes are cached in memory when the root is computed. The `Db` type parameter is
+/// kept for API compatibility and is no longer used to store preimages.
 pub struct MerkleTree<Db, M>
 where
     M: MerkleHash,
 {
     leaves: Vec<LeafWithHash<M>>,
-    db: Db,
+    /// Hashes of the inner nodes, in post-order. Only valid while `root` is `Some`.
+    nodes: Vec<M::Output>,
     root: Option<M::Output>,
     visitor: BoxedVisitor<M>,
     hasher: M,
+    _db: PhantomData<Db>,
 }
 
 impl<Db: PreimageDb<<M as MerkleHash>::Output>, M: MerkleHash + Default> Default
@@ -64,10 +71,11 @@ impl<Db: PreimageDb<<M as MerkleHash>::Output>, M: MerkleHash + Default> Default
     fn default() -> Self {
         Self {
             leaves: Default::default(),
-            db: Default::default(),
+            nodes: Default::default(),
             root: Default::default(),
             visitor: Box::new(|_| {}),
             hasher: Default::default(),
+            _db: PhantomData,
         }
     }
 }
@@ -196,10 +204,11 @@ where
     pub fn with_hasher(hasher: M) -> Self {
         Self {
             leaves: Vec::new(),
-            db: Default::default(),
+            nodes: Vec::new(),
             root: Some(M::EMPTY_ROOT),
             visitor: Box::new(|_| {}),
             hasher,
+            _db: PhantomData,
         }
     }
 
@@ -220,7 +229,7 @@ where
         if let Some(inner) = &self.root {
             return inner.clone();
         }
-        let inner = self.compute_root(0..self.leaves.len());
+        let inner = self.compute_root();
         self.root = Some(inner.clone());
         inner
     }
@@ -241,84 +250,87 @@ where
         &self.hasher
     }
 
-    fn compute_root(&mut self, leaf_range: Range<usize>) -> M::Output {
-        match leaf_range.len() {
-            0 => {
-                let root = M::EMPTY_ROOT;
-                (self.visitor)(&root);
-                root
-            }
-            1 => {
-                let leaf_with_hash = &self.leaves[leaf_range.start];
-                let root = leaf_with_hash.hash().clone();
-                (self.visitor)(&root);
-                self.db
-                    .put(root.clone(), Node::Leaf(leaf_with_hash.data().to_vec()));
-                root
-            }
-            _ => {
-                let split_point = next_smaller_po2(leaf_range.len()) + leaf_range.start;
-                let left = self.compute_root(leaf_range.start..split_point);
-                let right = self.compute_root(split_point..leaf_range.end);
-                let root = self.hasher.hash_nodes(&left, &right);
-                (self.visitor)(&root);
-                self.db.put(root.clone(), Node::Inner(left, right));
-                root
-            }
+    /// Computes the root over all leaves, refilling the inner node cache.
+    fn compute_root(&mut self) -> M::Output {
+        if self.leaves.is_empty() {
+            let root = M::EMPTY_ROOT;
+            (self.visitor)(&root);
+            return root;
         }
+        let mut nodes = mem::take(&mut self.nodes);
+        nodes.clear();
+        nodes.reserve(self.leaves.len() - 1);
+        let root = self.compute_subtree_root(0..self.leaves.len(), &mut nodes);
+        self.nodes = nodes;
+        root
+    }
+
+    /// Computes the root of the subtree over a non-empty `leaf_range`, appending its inner nodes
+    /// to `nodes` in post-order.
+    fn compute_subtree_root(
+        &self,
+        leaf_range: Range<usize>,
+        nodes: &mut Vec<M::Output>,
+    ) -> M::Output {
+        if leaf_range.len() == 1 {
+            let root = self.leaves[leaf_range.start].hash().clone();
+            (self.visitor)(&root);
+            return root;
+        }
+        let split_point = next_smaller_po2(leaf_range.len()) + leaf_range.start;
+        let left = self.compute_subtree_root(leaf_range.start..split_point, nodes);
+        let right = self.compute_subtree_root(split_point..leaf_range.end, nodes);
+        let root = self.hasher.hash_nodes(&left, &right);
+        (self.visitor)(&root);
+        nodes.push(root.clone());
+        root
+    }
+
+    /// Returns the hash of the node covering `leaf_range`, which must be a subtree of the tree.
+    /// The inner node cache must be up to date.
+    fn subtree_root(&self, leaf_range: Range<usize>) -> &M::Output {
+        if leaf_range.len() == 1 {
+            return self.leaves[leaf_range.start].hash();
+        }
+        // Inner nodes are cached in post-order, so the nodes before this one are the inner nodes
+        // of the subtrees left of it and of its own children. Every subtree left of it is perfect,
+        // one per set bit of `start`, holding `start - start.count_ones()` inner nodes in total;
+        // its children hold `len - 2`.
+        &self.nodes[leaf_range.end - leaf_range.start.count_ones() as usize - 2]
     }
 
     fn build_range_proof_inner(
         &self,
         range_to_prove: Range<usize>,
-        subtrie_root: M::Output,
         subtrie_range: Range<usize>,
         out: &mut Vec<M::Output>,
     ) {
-        if let Some(inner_node) = self.db.get(&subtrie_root) {
-            match inner_node {
-                // If we've bottomed out, return the leaf hash
-                Node::Leaf(_) => {
-                    if !range_to_prove.contains(&subtrie_range.start) {
-                        out.push(subtrie_root.clone())
-                    }
-                }
-                Node::Inner(l, r) => {
-                    let split_point = next_smaller_po2(subtrie_range.len()) + subtrie_range.start;
-                    // If the range to prove, doesn't overlap with the left subtrie, add the left subtrie root to the proof.
-                    // We're now done with the left subtrie
-                    if range_to_prove.start >= split_point {
-                        out.push(l.clone())
-                        //  If the range of nodes to prove completely contains the left subtrie, then we don't need to recurse.
-                    } else if range_to_prove.start > subtrie_range.start
-                        || range_to_prove.end < split_point
-                    {
-                        self.build_range_proof_inner(
-                            range_to_prove.clone(),
-                            l.clone(),
-                            subtrie_range.start..split_point,
-                            out,
-                        );
-                    }
-
-                    // Similarly, if the range to prove, doesn't overlap with the right subtrie, add the right subtrie root to the proof and return
-                    if range_to_prove.end <= split_point {
-                        out.push(r.clone())
-                    } else if range_to_prove.start > split_point
-                        || range_to_prove.end < subtrie_range.end
-                    {
-                        self.build_range_proof_inner(
-                            range_to_prove,
-                            r.clone(),
-                            split_point..subtrie_range.end,
-                            out,
-                        );
-                    }
-                }
+        // If we've bottomed out, return the leaf hash
+        if subtrie_range.len() == 1 {
+            if !range_to_prove.contains(&subtrie_range.start) {
+                out.push(self.subtree_root(subtrie_range).clone())
             }
-        } else {
-            assert_eq!(&subtrie_root, &M::EMPTY_ROOT);
-            out.push(subtrie_root)
+            return;
+        }
+        let split_point = next_smaller_po2(subtrie_range.len()) + subtrie_range.start;
+        // If the range to prove, doesn't overlap with the left subtrie, add the left subtrie root to the proof.
+        // We're now done with the left subtrie
+        if range_to_prove.start >= split_point {
+            out.push(self.subtree_root(subtrie_range.start..split_point).clone())
+            //  If the range of nodes to prove completely contains the left subtrie, then we don't need to recurse.
+        } else if range_to_prove.start > subtrie_range.start || range_to_prove.end < split_point {
+            self.build_range_proof_inner(
+                range_to_prove.clone(),
+                subtrie_range.start..split_point,
+                out,
+            );
+        }
+
+        // Similarly, if the range to prove, doesn't overlap with the right subtrie, add the right subtrie root to the proof and return
+        if range_to_prove.end <= split_point {
+            out.push(self.subtree_root(split_point..subtrie_range.end).clone())
+        } else if range_to_prove.start > split_point || range_to_prove.end < subtrie_range.end {
+            self.build_range_proof_inner(range_to_prove, split_point..subtrie_range.end, out);
         }
     }
 
@@ -505,7 +517,7 @@ where
         extra_leaves: &[M::Output],
         leaves_start_idx: usize,
     ) -> Result<M::Output, RangeProofError> {
-        // Helper that essentially replicates `compute_root`, but with no side-effects and with
+        // Helper that essentially replicates `compute_subtree_root`, but with no side-effects and with
         // only a partial leaf set
         struct SubrootParams<'a, M: MerkleHash> {
             extra_leaves: &'a [M::Output],
@@ -646,7 +658,7 @@ where
     /// A range proof of build_range_proof(1..3) would return the vector [C, F], since those two hashes, together
     /// with the two leaves in the range, are sufficient to reconstruct the tree
     pub fn build_range_proof(&mut self, leaf_range: Range<usize>) -> Proof<M> {
-        // Calculate the root to ensure that the preimage db is populated
+        // Calculate the root to ensure that the inner node cache is populated
         let root = self.root();
         let mut proof = Vec::new();
         let start = leaf_range.start as u32;
@@ -658,7 +670,11 @@ where
                 self.leaves.len()
             )
         }
-        self.build_range_proof_inner(leaf_range, root, 0..self.leaves.len(), &mut proof);
+        if self.leaves.is_empty() {
+            proof.push(root);
+        } else {
+            self.build_range_proof_inner(leaf_range, 0..self.leaves.len(), &mut proof);
+        }
 
         Proof {
             siblings: proof,
@@ -776,4 +792,48 @@ where
 fn next_smaller_po2(int: usize) -> usize {
     // Calculate the first power of two which is greater than or equal to the argument, then divide by two.
     int.next_power_of_two() >> 1
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{simple_merkle::db::MemDb, TmSha2Hasher};
+
+    type TmTree = MerkleTree<MemDb<[u8; 32]>, TmSha2Hasher>;
+
+    fn recompute_root(tree: &TmTree, range: Range<usize>) -> [u8; 32] {
+        if range.len() == 1 {
+            return *tree.leaves[range.start].hash();
+        }
+        let split_point = next_smaller_po2(range.len()) + range.start;
+        let left = recompute_root(tree, range.start..split_point);
+        let right = recompute_root(tree, split_point..range.end);
+        tree.hasher.hash_nodes(&left, &right)
+    }
+
+    /// Checks the cached hash of every node of the subtree over `range`.
+    fn check_subtree(tree: &TmTree, range: Range<usize>) {
+        assert_eq!(
+            tree.subtree_root(range.clone()),
+            &recompute_root(tree, range.clone()),
+            "{range:?}"
+        );
+        if range.len() > 1 {
+            let split_point = next_smaller_po2(range.len()) + range.start;
+            check_subtree(tree, range.start..split_point);
+            check_subtree(tree, split_point..range.end);
+        }
+    }
+
+    #[test]
+    fn test_subtree_root_matches_recomputed_root() {
+        let mut tree = TmTree::with_hasher(TmSha2Hasher {});
+        for n in 1..=70usize {
+            tree.push_raw_leaf(&n.to_be_bytes());
+            let root = tree.root();
+            assert_eq!(tree.nodes.len(), n - 1);
+            assert_eq!(tree.subtree_root(0..n), &root);
+            check_subtree(&tree, 0..n);
+        }
+    }
 }

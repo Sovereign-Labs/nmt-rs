@@ -1,5 +1,4 @@
-//! Implements a simple [RFC 6962](https://www.rfc-editor.org/rfc/rfc6962#section-2.1) compatible merkle tree
-//! over an in-memory data store which maps preimages to hashes.
+//! Implements a simple [RFC 6962](https://www.rfc-editor.org/rfc/rfc6962#section-2.1) compatible merkle tree.
 
 /// Defines traits and types for storing hashes and preimages.
 pub mod db;
