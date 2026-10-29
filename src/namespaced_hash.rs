@@ -1,7 +1,7 @@
 use crate::maybestd::{cmp, fmt, marker::PhantomData, vec::Vec};
 use sha2::{Digest, Sha256};
 
-use crate::simple_merkle::tree::MerkleHash;
+use crate::simple_merkle::{error::RangeProofError, tree::MerkleHash};
 /// The length of a hash in bytes
 pub const HASH_LEN: usize = 32;
 /// The default hasher. Currently sha256
@@ -99,8 +99,17 @@ impl<const NS_ID_SIZE: usize> MerkleHash for NamespacedSha2Hasher<NS_ID_SIZE> {
     }
 
     fn hash_nodes(&self, left: &Self::Output, right: &Self::Output) -> Self::Output {
+        self.try_hash_nodes(left, right)
+            .expect("Invalid nodes: left max namespace must be <= right min namespace")
+    }
+
+    fn try_hash_nodes(
+        &self,
+        left: &Self::Output,
+        right: &Self::Output,
+    ) -> Result<Self::Output, RangeProofError> {
         if left.max_namespace() > right.min_namespace() {
-            panic!("Invalid nodes: left max namespace must be <= right min namespace")
+            return Err(RangeProofError::MalformedTree);
         }
         let mut hasher = DefaultHasher::new_with_prefix(INTERNAL_NODE_DOMAIN_SEPARATOR);
         let max_nsid = NamespaceId::<NS_ID_SIZE>::max_id();
@@ -120,7 +129,7 @@ impl<const NS_ID_SIZE: usize> MerkleHash for NamespacedSha2Hasher<NS_ID_SIZE> {
         hasher.update(right.iter().collect::<Vec<_>>());
 
         output.set_hash(hasher.finalize().as_ref());
-        output
+        Ok(output)
     }
 }
 

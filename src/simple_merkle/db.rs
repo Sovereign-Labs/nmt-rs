@@ -78,7 +78,15 @@ impl<
         namespace: NamespaceId<NS_ID_SIZE>,
         ignore_max_ns: bool,
     ) -> Self {
-        let hasher = M::with_ignore_max_ns(ignore_max_ns);
+        Self::with_namespace_and_hasher(data, namespace, &M::with_ignore_max_ns(ignore_max_ns))
+    }
+
+    /// Create a new leaf with the provided namespace, hashed by the provided hasher.
+    pub fn with_namespace_and_hasher(
+        data: Vec<u8>,
+        namespace: NamespaceId<NS_ID_SIZE>,
+        hasher: &M,
+    ) -> Self {
         let hash = hasher.hash_leaf_with_namespace(&data, namespace);
         Self { data, hash }
     }
