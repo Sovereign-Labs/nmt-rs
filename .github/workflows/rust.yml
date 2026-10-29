@@ -56,6 +56,39 @@ jobs:
       - name: cargo hack
         run: cargo hack --feature-powerset check
 
+  zepter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install stable toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: cargo install zepter
+        uses: taiki-e/install-action@v2
+        with:
+          tool: zepter@1.88.2
+      - name: Check feature propagation
+        run: zepter run check
+
+  # A target without std, so a dependency that pulls in std fails the build.
+  no-std:
+    runs-on: ubuntu-latest
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install stable toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: thumbv7em-none-eabi
+          rustflags: -D warnings
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.8
+      - name: cargo install cargo-hack
+        uses: taiki-e/install-action@cargo-hack
+      - name: cargo hack no_std
+        run: cargo hack --feature-powerset --exclude-features std,default check --target thumbv7em-none-eabi
+
   test:
     runs-on: ubuntu-latest
     env:
