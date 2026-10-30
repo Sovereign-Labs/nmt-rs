@@ -7,9 +7,20 @@ edition = "2021"
 [package.metadata]
 cargo-fuzz = true
 
+[lib]
+name = "nmt_rs_fuzz"
+path = "src/lib.rs"
+
 [dependencies]
+borsh = "1"
 libfuzzer-sys = "0.4"
-nmt-rs = { path = ".." }
+nmt-rs = { path = "..", features = ["serde", "borsh"] }
+postcard = { version = "1", features = ["use-std"] }
+rmp-serde = "1"
+serde = "1"
+serde_json = "1"
+sha2 = "0.10"
+tendermint = { version = "0.41", default-features = false }
 
 [workspace]
 members = ["."]
@@ -24,6 +35,34 @@ bench = false
 [[bin]]
 name = "namespace_proofs"
 path = "fuzz_targets/namespace_proofs.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "narrow_proofs"
+path = "fuzz_targets/narrow_proofs.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "forged_proofs"
+path = "fuzz_targets/forged_proofs.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "simple_merkle_proofs"
+path = "fuzz_targets/simple_merkle_proofs.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "deserialize_proofs"
+path = "fuzz_targets/deserialize_proofs.rs"
 test = false
 doc = false
 bench = false

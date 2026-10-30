@@ -439,6 +439,11 @@ where
                 params.leaves_start_idx,
             )?;
             out.push(sibling.clone());
+        } else if params.narrowed_leaf_range.start <= working_range.start
+            && params.narrowed_leaf_range.end >= split_point
+        {
+            // The left subtree lies within the new range, so it contributes no proof nodes. Not
+            // recursing into it keeps narrowing logarithmic in the size of the claimed range.
         } else {
             let subtree_size = split_point - working_range.start;
             assert!(subtree_size > 0); // sanity check: since working_range > 1, each sub-tree must be >= 1
@@ -473,6 +478,10 @@ where
                 right_leaves_start_idx,
             )?;
             out.push(sibling.clone());
+        } else if params.narrowed_leaf_range.start <= split_point
+            && params.narrowed_leaf_range.end >= working_range.end
+        {
+            // Similarly, the right subtree lies within the new range
         } else {
             let subtree_size = working_range.end - split_point;
             assert!(subtree_size > 0); // sanity check - see left subtree explanation
