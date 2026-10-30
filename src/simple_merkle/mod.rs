@@ -1,6 +1,7 @@
-//! Implements a simple [RFC 6962](https://www.rfc-editor.org/rfc/rfc6962#section-2.1) compatible merkle tree.
+//! Implements a simple [RFC 6962](https://www.rfc-editor.org/rfc/rfc6962#section-2.1) compatible merkle tree
+//! which caches its inner nodes in memory.
 
-/// Defines traits and types for storing hashes and preimages.
+/// Defines the leaves stored in the tree.
 pub mod db;
 /// Defines errors that might arise in proof verification.
 pub mod error;

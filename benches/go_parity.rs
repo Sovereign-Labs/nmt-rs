@@ -9,12 +9,10 @@ use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use nmt_rs::{
-    simple_merkle::db::MemDb, NamespaceId, NamespaceMerkleHasher, NamespaceMerkleTree,
-    NamespacedHash, NamespacedSha2Hasher,
+    NamespaceId, NamespaceMerkleHasher, NamespaceMerkleTree, NamespacedHash, NamespacedSha2Hasher,
 };
 
-type Nmt<const NS: usize> =
-    NamespaceMerkleTree<MemDb<NamespacedHash<NS>>, NamespacedSha2Hasher<NS>, NS>;
+type Nmt<const NS: usize> = NamespaceMerkleTree<NamespacedSha2Hasher<NS>, NS>;
 
 type Leaves<const NS: usize> = Vec<(NamespaceId<NS>, Vec<u8>)>;
 

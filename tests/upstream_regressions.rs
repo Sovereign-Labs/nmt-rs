@@ -1,11 +1,11 @@
 use nmt_rs::{
-    simple_merkle::{db::MemDb, error::RangeProofError, proof::Proof, tree::MerkleHash},
+    simple_merkle::{error::RangeProofError, proof::Proof, tree::MerkleHash},
     NamespaceId, NamespaceMerkleHasher, NamespaceMerkleTree, NamespaceProof, NamespacedHash,
     NamespacedSha2Hasher,
 };
 
 type Hasher<const N: usize> = NamespacedSha2Hasher<N>;
-type Tree<const N: usize> = NamespaceMerkleTree<MemDb<NamespacedHash<N>>, Hasher<N>, N>;
+type Tree<const N: usize> = NamespaceMerkleTree<Hasher<N>, N>;
 
 const NO_LEAVES: &[&[u8]] = &[];
 
@@ -448,7 +448,7 @@ fn custom_hasher_preserves_configuration_for_singleton_root() {
         salt: 42,
     };
     let expected = hasher.hash_leaf_with_namespace(b"leaf", NamespaceId([1]));
-    let mut tree = NamespaceMerkleTree::<MemDb<NamespacedHash<1>>, _, 1>::with_hasher(hasher);
+    let mut tree = NamespaceMerkleTree::<_, 1>::with_hasher(hasher);
     tree.push_leaf(b"leaf", NamespaceId([1])).unwrap();
     assert_eq!(tree.root(), expected);
 }
@@ -464,7 +464,7 @@ fn custom_hasher_preserves_configuration_for_two_leaf_root() {
     let left = hasher.hash_leaf_with_namespace(b"leaf", NamespaceId([1]));
     let right = hasher.hash_leaf_with_namespace(b"leaf", NamespaceId([2]));
     let expected = hasher.hash_nodes(&left, &right);
-    let mut tree = NamespaceMerkleTree::<MemDb<NamespacedHash<1>>, _, 1>::with_hasher(hasher);
+    let mut tree = NamespaceMerkleTree::<_, 1>::with_hasher(hasher);
     tree.push_leaf(b"leaf", NamespaceId([1])).unwrap();
     tree.push_leaf(b"leaf", NamespaceId([2])).unwrap();
     assert_eq!(tree.root(), expected);
@@ -477,7 +477,7 @@ fn custom_hasher_proofs_verify_with_hasher() {
         inner: Hasher::with_ignore_max_ns(true),
         salt: 42,
     };
-    let mut tree = NamespaceMerkleTree::<MemDb<NamespacedHash<1>>, _, 1>::with_hasher(hasher());
+    let mut tree = NamespaceMerkleTree::<_, 1>::with_hasher(hasher());
     for namespace in [1, 2, 2, 4] {
         tree.push_leaf(b"leaf", NamespaceId([namespace])).unwrap();
     }
