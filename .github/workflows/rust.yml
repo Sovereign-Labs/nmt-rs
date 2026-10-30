@@ -133,3 +133,26 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           fail_ci_if_error: false
+
+  fuzz:
+    runs-on: ubuntu-latest
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install nightly toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: nightly
+          rustflags: -D warnings
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.8
+      - name: cargo install cargo-fuzz
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+      - name: Fuzz malformed_proofs
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu malformed_proofs -- -max_total_time=25
+      - name: Fuzz namespace_proofs
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu namespace_proofs -- -max_total_time=25
