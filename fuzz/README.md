@@ -31,10 +31,10 @@ Each run grows the target's corpus in `fuzz/corpus/<target>/`. To see how much o
 
 ```sh
 rustup component add --toolchain nightly llvm-tools-preview  # once
-fuzz/coverage.sh [--html] [TARGET...]
+fuzz/coverage.sh [--fuzz SECONDS] [--html] [TARGET...]
 ```
 
-`--html` also writes a per-line report to `fuzz/coverage/html/index.html`. Coverage only counts generic code which some target instantiates, so library code that no target calls doesn't appear in the totals at all. A warning that some functions have mismatched data is expected when merging targets, since each target compiles the shared code separately.
+`--fuzz SECONDS` first fuzzes each target for that long on every core, which creates the corpora on a fresh checkout and grows them afterwards; `fuzz/coverage.sh --fuzz 60` is a good start. A crash or slow input stops the script, leaving the reproducer in `fuzz/artifacts/<target>/`. `--html` also writes a per-line report to `fuzz/coverage/html/index.html`. Coverage only counts generic code which some target instantiates, so library code that no target calls doesn't appear in the totals at all. A warning that some functions have mismatched data is expected when merging targets, since each target compiles the shared code separately.
 
 ## Crashes
 
