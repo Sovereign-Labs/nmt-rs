@@ -1,3 +1,7 @@
+[![Crates.io](https://img.shields.io/crates/v/nmt-rs.svg)](https://crates.io/crates/nmt-rs)
+[![docs.rs](https://img.shields.io/docsrs/nmt-rs)](https://docs.rs/nmt-rs)
+[![License](https://img.shields.io/crates/l/nmt-rs.svg)](https://github.com/Sovereign-Labs/nmt-rs#license)
+[![CI](https://github.com/Sovereign-Labs/nmt-rs/actions/workflows/rust.yml/badge.svg?branch=master)](https://github.com/Sovereign-Labs/nmt-rs/actions/workflows/rust.yml)
 [![codecov](https://codecov.io/gh/Sovereign-Labs/nmt-rs/branch/master/graph/badge.svg?token=Q8U6SLAZOT)](https://codecov.io/gh/Sovereign-Labs/nmt-rs)
 
 # NMT
