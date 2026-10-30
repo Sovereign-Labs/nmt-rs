@@ -26,6 +26,14 @@ pub enum NamespaceProof<M: MerkleHash, const NS_ID_SIZE: usize> {
     /// A proof that some item is absent from the tree
     AbsenceProof {
         /// The range proof against the inner merkle tree
+        // The derived bound would require the hasher itself to implement borsh
+        #[cfg_attr(
+            feature = "borsh",
+            borsh(bound(
+                serialize = "Proof<M>: borsh::BorshSerialize",
+                deserialize = "Proof<M>: borsh::BorshDeserialize"
+            ))
+        )]
         proof: Proof<M>,
         /// Whether to treat the maximum possible namespace as a special marker value and ignore it in computing namespace ranges
         ignore_max_ns: bool,
@@ -36,6 +44,14 @@ pub enum NamespaceProof<M: MerkleHash, const NS_ID_SIZE: usize> {
     /// A proof that some item is included in the tree
     PresenceProof {
         /// The range proof against the inner merkle tree
+        // The derived bound would require the hasher itself to implement borsh
+        #[cfg_attr(
+            feature = "borsh",
+            borsh(bound(
+                serialize = "Proof<M>: borsh::BorshSerialize",
+                deserialize = "Proof<M>: borsh::BorshDeserialize"
+            ))
+        )]
         proof: Proof<M>,
         /// Whether to treat the maximum possible namespace as a special marker value and ignore it in computing namespace ranges
         ignore_max_ns: bool,
