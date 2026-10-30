@@ -27,3 +27,10 @@ path = "fuzz_targets/namespace_proofs.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "narrow_range"
+path = "fuzz_targets/narrow_range.rs"
+test = false
+doc = false
+bench = false

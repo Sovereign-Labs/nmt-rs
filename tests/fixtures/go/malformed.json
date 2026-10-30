@@ -1,0 +1,67 @@
+{
+  "scenario": "nmt-malformed",
+  "cases": [
+    {
+      "label": "invalid-namespace-length",
+      "operation": "parse_namespace",
+      "namespace_hex": "0102",
+      "expected_error": "invalid_namespace_length"
+    },
+    {
+      "label": "invalid-leaf-length",
+      "operation": "hash_leaf",
+      "leaf_hex": "0102",
+      "expected_error": "invalid_leaf_length"
+    },
+    {
+      "label": "invalid-node-length",
+      "operation": "parse_node",
+      "node_hex": "00",
+      "expected_error": "invalid_node_length"
+    },
+    {
+      "label": "invalid-node-namespace-order",
+      "operation": "parse_node",
+      "node_hex": "04040404040404040303030303030303f1234d75178d892a133a410355a5a990cf75d2f33eba25d575943d4df632f3a4",
+      "expected_error": "invalid_node_namespace_order"
+    },
+    {
+      "label": "unordered-leaves",
+      "operation": "push_leaves",
+      "leaves_hex": [
+        "02020202020202026669727374",
+        "01010101010101017365636f6e64"
+      ],
+      "expected_error": "unordered_leaves"
+    },
+    {
+      "label": "unordered-siblings",
+      "operation": "hash_node",
+      "left_hex": "03030303030303030303030303030303b34143ddfc717b551e933296fa422e7b0841b331840509d4843a77f8863c594a",
+      "right_hex": "02020202020202020202020202020202e275acd36abeee11c8279e6843598691ff4e357dbc06d3ee0048294f439ce01d",
+      "expected_error": "unordered_siblings"
+    },
+    {
+      "label": "invalid-range-empty",
+      "operation": "prove_range",
+      "leaves_hex": [
+        "010101010101010161"
+      ],
+      "expected_error": "invalid_range"
+    },
+    {
+      "label": "invalid-range-past-end",
+      "operation": "prove_range",
+      "leaves_hex": [
+        "010101010101010161"
+      ],
+      "end": 2,
+      "expected_error": "invalid_range"
+    },
+    {
+      "label": "invalid-subroot-path",
+      "operation": "subroot_paths",
+      "expected_error": "invalid_subroot_path"
+    }
+  ]
+}

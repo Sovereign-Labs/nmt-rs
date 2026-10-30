@@ -1,0 +1,87 @@
+{
+  "scenario": "nmt-roots",
+  "cases": [
+    {
+      "label": "empty",
+      "ignore_max_namespace": true,
+      "leaves_hex": [],
+      "root_hex": "00000000000000000000000000000000e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "min_namespace": "0000000000000000",
+      "max_namespace": "0000000000000000"
+    },
+    {
+      "label": "single",
+      "ignore_max_namespace": true,
+      "leaves_hex": [
+        "0101010101010101736f6c6f"
+      ],
+      "root_hex": "010101010101010101010101010101017e6f0af6305426faf7ce840113ab81af147393c1d00ccb0d4d70c5bd7f4c1038",
+      "min_namespace": "0101010101010101",
+      "max_namespace": "0101010101010101"
+    },
+    {
+      "label": "balanced",
+      "ignore_max_namespace": true,
+      "leaves_hex": [
+        "010101010101010161",
+        "020202020202020262",
+        "030303030303030363",
+        "040404040404040464"
+      ],
+      "root_hex": "010101010101010104040404040404047d8813fd647d753bf1938868707dc94d98bcb3aca67e120eb23d6727d5969ac2",
+      "min_namespace": "0101010101010101",
+      "max_namespace": "0404040404040404"
+    },
+    {
+      "label": "unbalanced",
+      "ignore_max_namespace": true,
+      "leaves_hex": [
+        "010101010101010161",
+        "020202020202020262",
+        "030303030303030363"
+      ],
+      "root_hex": "010101010101010103030303030303033ec7271666df2ff927e7999d54b77c98b4392d78ca1c75c4576be51b61b0c363",
+      "min_namespace": "0101010101010101",
+      "max_namespace": "0303030303030303"
+    },
+    {
+      "label": "repeated-namespace",
+      "ignore_max_namespace": true,
+      "leaves_hex": [
+        "010101010101010161",
+        "010101010101010162",
+        "020202020202020263",
+        "020202020202020264"
+      ],
+      "root_hex": "010101010101010102020202020202027c4dce2744c127db315ca5566d16ae0c845df747eb3cf18521ac976e16f4a8e3",
+      "min_namespace": "0101010101010101",
+      "max_namespace": "0202020202020202"
+    },
+    {
+      "label": "ignore-max-padding",
+      "ignore_max_namespace": true,
+      "leaves_hex": [
+        "010101010101010161",
+        "020202020202020262",
+        "ffffffffffffffff7061642d31",
+        "ffffffffffffffff7061642d32"
+      ],
+      "root_hex": "010101010101010102020202020202020bdbcb4805adb79a876f484632b95354ded8388a5d770b244ba2d63905aa2aad",
+      "min_namespace": "0101010101010101",
+      "max_namespace": "0202020202020202"
+    },
+    {
+      "label": "include-max-padding",
+      "ignore_max_namespace": false,
+      "leaves_hex": [
+        "010101010101010161",
+        "020202020202020262",
+        "ffffffffffffffff7061642d31",
+        "ffffffffffffffff7061642d32"
+      ],
+      "root_hex": "0101010101010101ffffffffffffffff0bdbcb4805adb79a876f484632b95354ded8388a5d770b244ba2d63905aa2aad",
+      "min_namespace": "0101010101010101",
+      "max_namespace": "ffffffffffffffff"
+    }
+  ]
+}

@@ -515,3 +515,193 @@ fn verification_rejects_hasher_with_mismatched_ignore_max_ns() {
         )
         .is_err());
 }
+
+fn absence_proof(
+    leaf: NamespacedHash<1>,
+    siblings: Vec<NamespacedHash<1>>,
+    start: u32,
+) -> NamespaceProof<Hasher<1>, 1> {
+    NamespaceProof::AbsenceProof {
+        proof: Proof {
+            siblings,
+            range: start..start + 1,
+        },
+        ignore_max_ns: true,
+        leaf: Some(leaf),
+    }
+}
+
+// Port of TestVerifyNamespace_ShortAbsenceProof_Valid. Nodes are named by the leaf range they cover:
+// https://github.com/celestiaorg/nmt/blob/a94d705f3ec953f848cfcfb0cc048c0e690f00d8/proof_test.go#L902-L991
+#[test]
+fn absence_accepts_short_proofs_with_inner_node_witness() {
+    let root = tree::<1>(&[1, 2, 3, 4, 6, 7, 8, 9], true).root();
+    let node0_4 = tree::<1>(&[1, 2, 3, 4], true).root();
+    let node4_6 = tree::<1>(&[6, 7], true).root();
+    let node4_8 = tree::<1>(&[6, 7, 8, 9], true).root();
+    let node6_8 = tree::<1>(&[8, 9], true).root();
+
+    let proofs = [
+        absence_proof(leaf(6), vec![node0_4.clone(), leaf(7), node6_8.clone()], 4),
+        absence_proof(node4_6, vec![node0_4.clone(), node6_8], 2),
+        absence_proof(node4_8, vec![node0_4], 1),
+    ];
+    for proof in proofs {
+        assert!(proof
+            .verify_complete_namespace(&root, NO_LEAVES, NamespaceId([5]))
+            .is_ok());
+    }
+}
+
+// Port of TestVerifyNamespace_ShortAbsenceProof_Invalid: the witness node's namespace range covers the queried namespace.
+// https://github.com/celestiaorg/nmt/blob/a94d705f3ec953f848cfcfb0cc048c0e690f00d8/proof_test.go#L993-L1086
+#[test]
+fn absence_rejects_short_proofs_whose_witness_covers_namespace() {
+    let root = tree::<1>(&[1, 2, 3, 4, 6, 8, 8, 8], true).root();
+    let node0_4 = tree::<1>(&[1, 2, 3, 4], true).root();
+    let node4_6 = tree::<1>(&[6, 8], true).root();
+    let node4_8 = tree::<1>(&[6, 8, 8, 8], true).root();
+    let node6_8 = tree::<1>(&[8, 8], true).root();
+
+    let full = absence_proof(leaf(8), vec![node0_4.clone(), leaf(6), node6_8.clone()], 5);
+    assert!(full
+        .verify_complete_namespace(&root, NO_LEAVES, NamespaceId([7]))
+        .is_ok());
+
+    let proofs = [
+        absence_proof(node4_6, vec![node0_4.clone(), node6_8], 2),
+        absence_proof(node4_8, vec![node0_4], 1),
+    ];
+    for proof in proofs {
+        assert!(proof
+            .verify_complete_namespace(&root, NO_LEAVES, NamespaceId([7]))
+            .is_err());
+    }
+}
+
+// Port of TestVerifyNamespace_OverflowingProofEnd, with starts at the top of Rust's u32 range:
+// https://github.com/celestiaorg/nmt/blob/a94d705f3ec953f848cfcfb0cc048c0e690f00d8/proof_test.go#L2084-L2129
+#[test]
+fn verification_rejects_proof_with_overflowing_range() {
+    let root = tree::<1>(&[1, 2, 3, 4, 6, 7, 8, 9], true).root();
+    let left = tree::<1>(&[1, 2, 3, 4], true).root();
+    let right = tree::<1>(&[6, 7, 8, 9], true).root();
+    let fabricated = b"never published";
+
+    for start in [1 << 31, u32::MAX - 1] {
+        let proof = Proof::<Hasher<1>> {
+            siblings: vec![left.clone(), right.clone()],
+            range: start..start + 1,
+        };
+        assert!(proof
+            .verify_range_with_hasher(&root, &[leaf(5)], Hasher::with_ignore_max_ns(true))
+            .is_err());
+
+        let proof = NamespaceProof::PresenceProof {
+            proof,
+            ignore_max_ns: true,
+        };
+        assert!(proof
+            .verify_complete_namespace(&root, &[fabricated], NamespaceId([5]))
+            .is_err());
+        assert!(proof
+            .verify_range(&root, &[fabricated], NamespaceId([5]))
+            .is_err());
+    }
+}
+
+fn ignores_max_ns<const N: usize>(proof: &NamespaceProof<Hasher<N>, N>) -> bool {
+    match proof {
+        NamespaceProof::PresenceProof { ignore_max_ns, .. }
+        | NamespaceProof::AbsenceProof { ignore_max_ns, .. } => *ignore_max_ns,
+    }
+}
+
+// Port of TestIgnoreMaxNamespace, with 0, 1, 2 standing for Go's min, second and third namespaces:
+// https://github.com/celestiaorg/nmt/blob/a94d705f3ec953f848cfcfb0cc048c0e690f00d8/nmt_test.go#L332-L531
+#[test]
+fn root_max_namespace_ignores_max_namespace_only_when_configured() {
+    const MAX: u8 = 0xff;
+    let cases: &[(bool, &[u8], u8)] = &[
+        (true, &[MAX], MAX),
+        (false, &[MAX], MAX),
+        (true, &[1, MAX], 1),
+        (false, &[1, MAX], MAX),
+        (true, &[MAX, MAX], MAX),
+        (false, &[MAX, MAX], MAX),
+        (true, &[0, 1], 1),
+        (false, &[0, 1], 1),
+        (true, &[0, 1, MAX], 1),
+        (false, &[0, 1, MAX], MAX),
+        (true, &[0, 0, 1, 2], 2),
+        (true, &[0, 1, MAX, MAX], 1),
+        (false, &[0, 1, MAX, MAX], MAX),
+        (true, &[0, 1, 2, 2, MAX, MAX, MAX, MAX], 2),
+    ];
+    for &(ignore_max_ns, namespaces, want_max) in cases {
+        let mut tree = tree::<8>(namespaces, ignore_max_ns);
+        let root = tree.root();
+        assert_eq!(
+            root.max_namespace(),
+            NamespaceId([want_max; 8]),
+            "{ignore_max_ns} {namespaces:?}"
+        );
+
+        for (idx, &namespace) in namespaces.iter().enumerate() {
+            let namespace = NamespaceId([namespace; 8]);
+            let (leaves, proof) = tree.get_namespace_with_proof(namespace);
+            assert_eq!(ignores_max_ns(&proof), ignore_max_ns);
+            let leaves = if proof.is_empty_proof() {
+                vec![]
+            } else {
+                leaves
+            };
+            assert!(proof
+                .verify_complete_namespace(&root, &leaves, namespace)
+                .is_ok());
+
+            let (leaves, proof) = tree.get_range_with_proof(idx..idx + 1);
+            assert_eq!(ignores_max_ns(&proof), ignore_max_ns);
+            assert!(proof.verify_range(&root, &leaves, namespace).is_ok());
+        }
+    }
+}
+
+// Port of TestProof_VerifyNamespace_False ("remove one leaf & update proof range"):
+// https://github.com/celestiaorg/nmt/blob/a94d705f3ec953f848cfcfb0cc048c0e690f00d8/proof_test.go#L129-L255
+#[test]
+fn completeness_rejects_proof_range_shrunk_to_fewer_leaves() {
+    let mut tree = tree::<3>(&[0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 8], true);
+    let (leaves, mut proof) = tree.get_namespace_with_proof(NamespaceId([0; 3]));
+    merkle_proof(&mut proof).range.end -= 1;
+    assert!(proof
+        .verify_complete_namespace(&tree.root(), &leaves[..1], NamespaceId([0; 3]))
+        .is_err());
+}
+
+// Port of TestProof_VerifyNamespace_False ("incomplete namespace proof (left)"):
+// https://github.com/celestiaorg/nmt/blob/a94d705f3ec953f848cfcfb0cc048c0e690f00d8/proof_test.go#L129-L255
+#[test]
+fn completeness_rejects_omitted_leaf_of_same_namespace_on_left() {
+    let mut tree = tree::<3>(&[0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 8], true);
+    let (leaves, proof) = tree.get_range_with_proof(10..11);
+    assert!(proof
+        .verify_range(&tree.root(), &leaves, NamespaceId([8; 3]))
+        .is_ok());
+    assert!(proof
+        .verify_complete_namespace(&tree.root(), &leaves, NamespaceId([8; 3]))
+        .is_err());
+}
+
+// Port of TestProof_VerifyNamespace_False ("invalid absence proof of an existing nid"):
+// https://github.com/celestiaorg/nmt/blob/a94d705f3ec953f848cfcfb0cc048c0e690f00d8/proof_test.go#L129-L255
+#[test]
+fn absence_rejects_present_namespace_with_its_own_leaf_as_witness() {
+    let mut tree = tree::<3>(&[0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 8], true);
+    let mut proof = tree.get_namespace_proof(NamespaceId([2; 3]));
+    assert_eq!(proof.start_idx(), 3);
+    proof.convert_to_absence_proof(tree.leaves()[3].hash().clone());
+    assert!(proof
+        .verify_complete_namespace(&tree.root(), NO_LEAVES, NamespaceId([2; 3]))
+        .is_err());
+}
