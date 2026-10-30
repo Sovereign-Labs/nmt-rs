@@ -7,13 +7,16 @@ cargo install cargo-fuzz --locked
 rustup toolchain install nightly
 cargo +nightly fuzz run malformed_proofs -- -max_total_time=60
 cargo +nightly fuzz run namespace_proofs -- -max_total_time=60
+cargo +nightly fuzz run narrow_range -- -max_total_time=60
 ```
 
 `malformed_proofs` constructs bounded proof objects with arbitrary ranges, sibling bounds, hashes, and presence/absence variants. Either public namespace verifier may return an error, but must not panic.
 
 `namespace_proofs` builds sorted trees, checks namespace results against the input leaves, verifies complete and partial proofs, and requires rejection of altered leaf data or fabricated data for an absent namespace. It keeps the original root fixed. The input selects whether to tamper, allowing valid-only cases to remain in the corpus.
 
-Both targets exercise 29-byte namespace IDs and both `ignore_max_ns` settings. Namespace bytes are repeated from a single byte to make boundary comparisons and duplicate namespaces easy to generate. The semantic target includes maximum-namespace leaves but skips complete-namespace queries for that reserved namespace when `ignore_max_ns` is enabled. Inputs are bounded to 32 tree leaves, 16 malformed-proof leaves, 64 bytes per input leaf, and 32 siblings.
+`narrow_range` builds a tree, proves a range and narrows the proof to a subrange. Untampered proofs must narrow to exactly the proof built for the subrange, and that proof must verify. Tampered siblings, ranges or extra leaves may make narrowing fail, but must not panic. Narrowing takes time linear in the claimed range length, so tampered ranges are bounded to 2^16.
+
+All targets exercise 29-byte namespace IDs and both `ignore_max_ns` settings. Namespace bytes are repeated from a single byte to make boundary comparisons and duplicate namespaces easy to generate. The semantic target includes maximum-namespace leaves but skips complete-namespace queries for that reserved namespace when `ignore_max_ns` is enabled. Inputs are bounded to 32 tree leaves, 16 malformed-proof leaves, 64 bytes per input leaf, and 32 siblings.
 
 Crashes are saved under `fuzz/artifacts/<target>/`. Replay and minimize them with:
 
