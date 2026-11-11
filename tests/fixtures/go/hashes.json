@@ -1,0 +1,80 @@
+{
+  "scenario": "nmt-hashes",
+  "namespace_size": 8,
+  "hash_size": 32,
+  "empty_root_hex": "00000000000000000000000000000000e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "leaf_cases": [
+    {
+      "label": "namespace-0000000000000000",
+      "leaf_hex": "00000000000000007a65726f",
+      "hash_hex": "00000000000000000000000000000000433da7136f77867adf509d5d9f87582db8715206609cb9574d9edae4d92028fa",
+      "namespace": "0000000000000000"
+    },
+    {
+      "label": "namespace-0101010101010101",
+      "leaf_hex": "0101010101010101616c706861",
+      "hash_hex": "010101010101010101010101010101013db8726c00b94fd28e27990860659148c4cf77615054de430f803390fa0ed26b",
+      "namespace": "0101010101010101"
+    },
+    {
+      "label": "namespace-7f7f7f7f7f7f7f7f",
+      "leaf_hex": "7f7f7f7f7f7f7f7f6d6964646c65",
+      "hash_hex": "7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f23694a783f5a19b735c8646d5a7b2f8e60bf766e62fac614fe417b8efbbcd340",
+      "namespace": "7f7f7f7f7f7f7f7f"
+    },
+    {
+      "label": "namespace-ffffffffffffffff",
+      "leaf_hex": "ffffffffffffffff6d6178",
+      "hash_hex": "ffffffffffffffffffffffffffffffffb17f5cd7b4c33114fdf4d1b2e6398319a2f29067ace732716672818649e1d3e7",
+      "namespace": "ffffffffffffffff"
+    }
+  ],
+  "node_cases": [
+    {
+      "label": "ordered-inner",
+      "ignore_max_namespace": true,
+      "left_hex": "0202020202020202020202020202020237c1cfeff4fe5581c5a525a208d3ca266217b83c57b33dfbca1e97f526e9994e",
+      "right_hex": "0404040404040404040404040404040496ec59112d453b6cacc6bb2e4a08968731b75301b9d09c8d9b4e0e29c166c7ab",
+      "hash_hex": "02020202020202020404040404040404d0550b2ad9ebf4f0c8813b069a7ea3a1fc2227fbad58634a4706fa57219365a2",
+      "min_namespace": "0202020202020202",
+      "max_namespace": "0404040404040404"
+    },
+    {
+      "label": "ignore-max-namespace",
+      "ignore_max_namespace": true,
+      "left_hex": "0202020202020202020202020202020237c1cfeff4fe5581c5a525a208d3ca266217b83c57b33dfbca1e97f526e9994e",
+      "right_hex": "ffffffffffffffffffffffffffffffffa1553c359c6a7c338fc11bdfd77c9dcb4e84a1fdec4c9f4ce064aa53f33dc987",
+      "hash_hex": "02020202020202020202020202020202d4f231f2ffbebac76c159aeeb344eaf3bea9fde1d749a788da4aed073942a8b5",
+      "min_namespace": "0202020202020202",
+      "max_namespace": "0202020202020202"
+    },
+    {
+      "label": "include-max-namespace",
+      "ignore_max_namespace": false,
+      "left_hex": "0202020202020202020202020202020237c1cfeff4fe5581c5a525a208d3ca266217b83c57b33dfbca1e97f526e9994e",
+      "right_hex": "ffffffffffffffffffffffffffffffffa1553c359c6a7c338fc11bdfd77c9dcb4e84a1fdec4c9f4ce064aa53f33dc987",
+      "hash_hex": "0202020202020202ffffffffffffffffd4f231f2ffbebac76c159aeeb344eaf3bea9fde1d749a788da4aed073942a8b5",
+      "min_namespace": "0202020202020202",
+      "max_namespace": "ffffffffffffffff"
+    }
+  ],
+  "parse_cases": [
+    {
+      "label": "valid-node",
+      "node_hex": "02020202020202020404040404040404d0550b2ad9ebf4f0c8813b069a7ea3a1fc2227fbad58634a4706fa57219365a2",
+      "valid": true
+    },
+    {
+      "label": "short-node",
+      "node_hex": "00",
+      "valid": false,
+      "expected_error": "invalid_node_length"
+    },
+    {
+      "label": "invalid-namespace-order",
+      "node_hex": "09090909090909090808080808080808172e02f69472f3527156dcbe4d5453b870be5a2d84645b8a720767d3eb09e48b",
+      "valid": false,
+      "expected_error": "invalid_node_namespace_order"
+    }
+  ]
+}

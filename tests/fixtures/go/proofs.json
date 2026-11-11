@@ -1,0 +1,265 @@
+{
+  "scenario": "nmt-proofs",
+  "cases": [
+    {
+      "label": "mixed",
+      "leaves_hex": [
+        "010101010101010161",
+        "010101010101010162",
+        "030303030303030363",
+        "050505050505050564"
+      ],
+      "root_hex": "01010101010101010505050505050505b7ca4deab1711a63e871abaf9bb6d5241b86c31fc52fc0be7fba61742a9f7d15",
+      "namespace_cases": [
+        {
+          "label": "namespace-00",
+          "namespace_hex": "0000000000000000",
+          "leaves_hex": [],
+          "proof": {
+            "start": 0,
+            "end": 0,
+            "nodes_hex": [],
+            "is_max_namespace_ignored": true
+          }
+        },
+        {
+          "label": "namespace-01",
+          "namespace_hex": "0101010101010101",
+          "leaves_hex": [
+            "010101010101010161",
+            "010101010101010162"
+          ],
+          "proof": {
+            "start": 0,
+            "end": 2,
+            "nodes_hex": [
+              "03030303030303030505050505050505fe143cdf07f1b5d15db361d8a7f20681187561ce627a5a412895a2bf61329658"
+            ],
+            "is_max_namespace_ignored": true
+          }
+        },
+        {
+          "label": "namespace-02",
+          "namespace_hex": "0202020202020202",
+          "leaves_hex": [],
+          "proof": {
+            "start": 2,
+            "end": 3,
+            "nodes_hex": [
+              "01010101010101010101010101010101315ea01135aa26ec9bb4128566abd68c8edd5744e1321f3a02a7389d6bcb9189",
+              "050505050505050505050505050505053c61a324f10fc5da89fc0e0b8f1b998968bc06bc6945c5fc1ea4a64b5a89e731"
+            ],
+            "leaf_hash_hex": "030303030303030303030303030303034ef3267bcc7b419b66d2088856c2946477def4eb01a40c42fc8bda6dd58aa484",
+            "is_max_namespace_ignored": true
+          }
+        },
+        {
+          "label": "namespace-03",
+          "namespace_hex": "0303030303030303",
+          "leaves_hex": [
+            "030303030303030363"
+          ],
+          "proof": {
+            "start": 2,
+            "end": 3,
+            "nodes_hex": [
+              "01010101010101010101010101010101315ea01135aa26ec9bb4128566abd68c8edd5744e1321f3a02a7389d6bcb9189",
+              "050505050505050505050505050505053c61a324f10fc5da89fc0e0b8f1b998968bc06bc6945c5fc1ea4a64b5a89e731"
+            ],
+            "is_max_namespace_ignored": true
+          }
+        },
+        {
+          "label": "namespace-09",
+          "namespace_hex": "0909090909090909",
+          "leaves_hex": [],
+          "proof": {
+            "start": 0,
+            "end": 0,
+            "nodes_hex": [],
+            "is_max_namespace_ignored": true
+          }
+        }
+      ],
+      "range_cases": [
+        {
+          "label": "range-0-2",
+          "namespace_hex": "0101010101010101",
+          "start": 0,
+          "end": 2,
+          "leaf_hashes_hex": [
+            "010101010101010101010101010101015a1da4aa39b66f04667037a53b3ca069322cb1b21cebe00f5a750e0f6459f3b6",
+            "010101010101010101010101010101018d4d6e69dc624691c049f5dfbf0b9dd9bc51462ddae8bc6c473a6dd7cc67f205"
+          ],
+          "proof": {
+            "start": 0,
+            "end": 2,
+            "nodes_hex": [
+              "03030303030303030505050505050505fe143cdf07f1b5d15db361d8a7f20681187561ce627a5a412895a2bf61329658"
+            ],
+            "is_max_namespace_ignored": true
+          }
+        },
+        {
+          "label": "range-2-3",
+          "namespace_hex": "0303030303030303",
+          "start": 2,
+          "end": 3,
+          "leaf_hashes_hex": [
+            "030303030303030303030303030303034ef3267bcc7b419b66d2088856c2946477def4eb01a40c42fc8bda6dd58aa484"
+          ],
+          "proof": {
+            "start": 2,
+            "end": 3,
+            "nodes_hex": [
+              "01010101010101010101010101010101315ea01135aa26ec9bb4128566abd68c8edd5744e1321f3a02a7389d6bcb9189",
+              "050505050505050505050505050505053c61a324f10fc5da89fc0e0b8f1b998968bc06bc6945c5fc1ea4a64b5a89e731"
+            ],
+            "is_max_namespace_ignored": true
+          }
+        },
+        {
+          "label": "range-3-4",
+          "namespace_hex": "0505050505050505",
+          "start": 3,
+          "end": 4,
+          "leaf_hashes_hex": [
+            "050505050505050505050505050505053c61a324f10fc5da89fc0e0b8f1b998968bc06bc6945c5fc1ea4a64b5a89e731"
+          ],
+          "proof": {
+            "start": 3,
+            "end": 4,
+            "nodes_hex": [
+              "01010101010101010101010101010101315ea01135aa26ec9bb4128566abd68c8edd5744e1321f3a02a7389d6bcb9189",
+              "030303030303030303030303030303034ef3267bcc7b419b66d2088856c2946477def4eb01a40c42fc8bda6dd58aa484"
+            ],
+            "is_max_namespace_ignored": true
+          }
+        }
+      ]
+    },
+    {
+      "label": "unbalanced",
+      "leaves_hex": [
+        "020202020202020261",
+        "040404040404040462",
+        "060606060606060663"
+      ],
+      "root_hex": "02020202020202020606060606060606622d7512f308ac297d22f9772ffb33f3c7065b7957acb512b285c5ba0d2bb8b2",
+      "namespace_cases": [
+        {
+          "label": "namespace-02",
+          "namespace_hex": "0202020202020202",
+          "leaves_hex": [
+            "020202020202020261"
+          ],
+          "proof": {
+            "start": 0,
+            "end": 1,
+            "nodes_hex": [
+              "0404040404040404040404040404040449f971e207048b84bd7fe089f6453108d995657e47a1f30fbd0af7323c08d4d2",
+              "06060606060606060606060606060606c7949f7e60779f873d4dbead3994436d4a166f24d8d9e1e7ddd5e04171491432"
+            ],
+            "is_max_namespace_ignored": true
+          }
+        },
+        {
+          "label": "namespace-03",
+          "namespace_hex": "0303030303030303",
+          "leaves_hex": [],
+          "proof": {
+            "start": 1,
+            "end": 2,
+            "nodes_hex": [
+              "020202020202020202020202020202026483a689b25f2ba7d63368a8a0245ac59e47148f46ec698e0b2ae20912922c91",
+              "06060606060606060606060606060606c7949f7e60779f873d4dbead3994436d4a166f24d8d9e1e7ddd5e04171491432"
+            ],
+            "leaf_hash_hex": "0404040404040404040404040404040449f971e207048b84bd7fe089f6453108d995657e47a1f30fbd0af7323c08d4d2",
+            "is_max_namespace_ignored": true
+          }
+        },
+        {
+          "label": "namespace-06",
+          "namespace_hex": "0606060606060606",
+          "leaves_hex": [
+            "060606060606060663"
+          ],
+          "proof": {
+            "start": 2,
+            "end": 3,
+            "nodes_hex": [
+              "020202020202020204040404040404045ee8b3ef07a5719422d8e47a5e763de58232a91f0d50711fce22fe5a0b2c4a68"
+            ],
+            "is_max_namespace_ignored": true
+          }
+        },
+        {
+          "label": "namespace-08",
+          "namespace_hex": "0808080808080808",
+          "leaves_hex": [],
+          "proof": {
+            "start": 0,
+            "end": 0,
+            "nodes_hex": [],
+            "is_max_namespace_ignored": true
+          }
+        }
+      ],
+      "range_cases": [
+        {
+          "label": "range-0-1",
+          "namespace_hex": "0202020202020202",
+          "start": 0,
+          "end": 1,
+          "leaf_hashes_hex": [
+            "020202020202020202020202020202026483a689b25f2ba7d63368a8a0245ac59e47148f46ec698e0b2ae20912922c91"
+          ],
+          "proof": {
+            "start": 0,
+            "end": 1,
+            "nodes_hex": [
+              "0404040404040404040404040404040449f971e207048b84bd7fe089f6453108d995657e47a1f30fbd0af7323c08d4d2",
+              "06060606060606060606060606060606c7949f7e60779f873d4dbead3994436d4a166f24d8d9e1e7ddd5e04171491432"
+            ],
+            "is_max_namespace_ignored": true
+          }
+        },
+        {
+          "label": "range-1-2",
+          "namespace_hex": "0404040404040404",
+          "start": 1,
+          "end": 2,
+          "leaf_hashes_hex": [
+            "0404040404040404040404040404040449f971e207048b84bd7fe089f6453108d995657e47a1f30fbd0af7323c08d4d2"
+          ],
+          "proof": {
+            "start": 1,
+            "end": 2,
+            "nodes_hex": [
+              "020202020202020202020202020202026483a689b25f2ba7d63368a8a0245ac59e47148f46ec698e0b2ae20912922c91",
+              "06060606060606060606060606060606c7949f7e60779f873d4dbead3994436d4a166f24d8d9e1e7ddd5e04171491432"
+            ],
+            "is_max_namespace_ignored": true
+          }
+        },
+        {
+          "label": "range-2-3",
+          "namespace_hex": "0606060606060606",
+          "start": 2,
+          "end": 3,
+          "leaf_hashes_hex": [
+            "06060606060606060606060606060606c7949f7e60779f873d4dbead3994436d4a166f24d8d9e1e7ddd5e04171491432"
+          ],
+          "proof": {
+            "start": 2,
+            "end": 3,
+            "nodes_hex": [
+              "020202020202020204040404040404045ee8b3ef07a5719422d8e47a5e763de58232a91f0d50711fce22fe5a0b2c4a68"
+            ],
+            "is_max_namespace_ignored": true
+          }
+        }
+      ]
+    }
+  ]
+}
