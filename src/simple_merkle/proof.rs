@@ -1,7 +1,6 @@
 use core::{cmp::Ordering, ops::Range};
 
 use super::{
-    db::NoopDb,
     error::RangeProofError,
     tree::{MerkleHash, MerkleTree},
     utils::compute_num_left_siblings,
@@ -48,7 +47,7 @@ where
             return Err(RangeProofError::WrongAmountOfLeavesProvided);
         }
 
-        let tree = MerkleTree::<NoopDb, M>::new();
+        let tree = MerkleTree::<M>::new();
         tree.check_range_proof(
             root,
             leaf_hashes,
@@ -73,7 +72,7 @@ where
             return Err(RangeProofError::WrongAmountOfLeavesProvided);
         }
 
-        let tree = MerkleTree::<NoopDb, M>::with_hasher(hasher);
+        let tree = MerkleTree::<M>::with_hasher(hasher);
         tree.check_range_proof(
             root,
             leaf_hashes,
@@ -119,7 +118,7 @@ where
             .and_then(|i| i.checked_sub(new_leaf_len))
             .ok_or(RangeProofError::TreeTooLarge)?;
 
-        let mut tree = MerkleTree::<NoopDb, M>::with_hasher(hasher);
+        let mut tree = MerkleTree::<M>::with_hasher(hasher);
         tree.narrow_range_proof(
             left_extra_leaves,
             new_start_idx..new_end_idx,
