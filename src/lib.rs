@@ -30,13 +30,13 @@ mod maybestd {
 
     pub mod hash_or_btree_map {
         #[cfg(not(feature = "std"))]
-        pub use alloc::collections::btree_map::{BTreeMap as Map, Entry};
+        pub use alloc::collections::btree_map::BTreeMap as Map;
         #[cfg(feature = "std")]
-        pub use std::collections::hash_map::{Entry, HashMap as Map};
+        pub use std::collections::hash_map::HashMap as Map;
     }
 }
 
-use crate::maybestd::{hash_or_btree_map, ops::Range, vec::Vec};
+use crate::maybestd::{ops::Range, vec::Vec};
 
 pub use nmt_proof::NamespaceProof;
 use simple_merkle::{
@@ -99,7 +99,8 @@ fn check_proof_completeness<const NS_ID_SIZE: usize>(
 
 /// A namespaced merkle tree, implemented as a wrapper around a simple merkle tree.
 pub struct NamespaceMerkleTree<Db, M: MerkleHash, const NS_ID_SIZE: usize> {
-    namespace_ranges: hash_or_btree_map::Map<NamespaceId<NS_ID_SIZE>, Range<usize>>,
+    /// Each namespace in the tree with the index of its first leaf, in namespace order.
+    namespace_starts: Vec<(NamespaceId<NS_ID_SIZE>, usize)>,
     highest_ns: NamespaceId<NS_ID_SIZE>,
     inner: MerkleTree<Db, M>,
 }
@@ -123,7 +124,7 @@ where
     /// Creates a new nmt with the provided hasher
     pub fn with_hasher(hasher: M) -> Self {
         Self {
-            namespace_ranges: Default::default(),
+            namespace_starts: Default::default(),
             highest_ns: NamespaceId([0u8; NS_ID_SIZE]),
             inner: MerkleTree::<Db, M>::with_hasher(hasher),
         }
@@ -150,17 +151,29 @@ where
         );
         self.highest_ns = namespace;
         self.inner.push_leaf_with_hash(leaf);
-
-        let leaves_len = self.leaves().len();
-        match self.namespace_ranges.entry(namespace) {
-            hash_or_btree_map::Entry::Occupied(entry) => {
-                entry.into_mut().end = leaves_len;
-            }
-            hash_or_btree_map::Entry::Vacant(entry) => {
-                entry.insert(leaves_len - 1..leaves_len);
-            }
+        // Leaves are pushed in namespace order, so a new namespace can only follow the last one
+        if self.namespace_starts.last().map(|(ns, _)| ns) != Some(&namespace) {
+            self.namespace_starts
+                .push((namespace, self.leaves().len() - 1));
         }
         Ok(())
+    }
+
+    /// Returns the range of leaves in the given namespace, which is empty if the namespace has no
+    /// leaves. In that case, the range starts at the index the namespace would be inserted at.
+    fn namespace_range(&self, namespace: NamespaceId<NS_ID_SIZE>) -> Range<usize> {
+        let start_of = |idx: usize| {
+            self.namespace_starts
+                .get(idx)
+                .map_or(self.leaves().len(), |&(_, start)| start)
+        };
+        let first = self
+            .namespace_starts
+            .partition_point(|(ns, _)| *ns < namespace);
+        let end = self
+            .namespace_starts
+            .partition_point(|(ns, _)| *ns <= namespace);
+        start_of(first)..start_of(end)
     }
 
     /// Returns the root of the tree, computing it if necessary. Repeated calls return a cached root.
@@ -260,12 +273,7 @@ where
         &mut self,
         namespace: NamespaceId<NS_ID_SIZE>,
     ) -> (Vec<Vec<u8>>, NamespaceProof<M, NS_ID_SIZE>) {
-        let leaf_range = if let Some(range) = self.namespace_ranges.get(&namespace) {
-            range.clone()
-        } else {
-            0..0
-        };
-        let leaves = self.inner.get_leaves(leaf_range);
+        let leaves = self.inner.get_leaves(self.namespace_range(namespace));
 
         (leaves, self.get_namespace_proof(namespace))
     }
@@ -290,9 +298,10 @@ where
         }
 
         // If the namespace has data, just look up that namespace range and prove it by index
-        if let Some(leaf_range) = self.namespace_ranges.get(&namespace) {
+        let leaf_range = self.namespace_range(namespace);
+        if !leaf_range.is_empty() {
             return NamespaceProof::PresenceProof {
-                proof: self.inner.build_range_proof(leaf_range.clone()),
+                proof: self.inner.build_range_proof(leaf_range),
                 ignore_max_ns: self.ignore_max_ns(),
             };
         }
@@ -302,15 +311,8 @@ where
         // Since a range proof for the range [i, i+1) includes the namespaced hash of the left sibling
         // of the leaf i, which must include the namespace of the leaf i-1, then
         // proving this range is sufficient to establish that the namespace doesn't exist.
-        let namespace = self
-            .inner
-            .leaves()
-            .binary_search_by(|l| l.hash().min_namespace().cmp(&namespace));
-
-        // The builtin binary search method returns the index where the item could be inserted while maintaining sorted order,
-        // which is the index of the leaf we want to prove
-        let idx =
-            namespace.expect_err("tree cannot contain leaf with namespace that does not exist");
+        // The empty range starts where the namespace would be inserted, which is the index of the leaf we want to prove.
+        let idx = leaf_range.start;
 
         let proof = self.build_range_proof(idx..idx + 1);
 
@@ -419,7 +421,7 @@ where
 {
     fn default() -> Self {
         Self {
-            namespace_ranges: Default::default(),
+            namespace_starts: Default::default(),
             highest_ns: NamespaceId::default(),
             inner: Default::default(),
         }
@@ -837,7 +839,9 @@ mod tests {
         let raw_leaves: Vec<Vec<u8>> = tree.leaves().iter().map(|x| x.data().to_vec()).collect();
 
         // Build proofs for each range that's actually included, and check that the range can be retrieved correctly
-        for (namespace, range) in tree.namespace_ranges.clone().iter() {
+        let namespaces: Vec<_> = tree.namespace_starts.iter().map(|(ns, _)| *ns).collect();
+        for namespace in namespaces {
+            let range = tree.namespace_range(namespace);
             let proof = tree.build_range_proof(range.clone());
             assert!(!range.is_empty());
 
@@ -847,7 +851,7 @@ mod tests {
             };
 
             assert!(tree
-                .verify_namespace(&root, &raw_leaves[range.clone()], *namespace, &proof)
+                .verify_namespace(&root, &raw_leaves[range.clone()], namespace, &proof)
                 .is_ok());
         }
 
