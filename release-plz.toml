@@ -2,3 +2,6 @@
 # try to release only after merging the release PR
 # https://release-plz.dev/docs/config#the-release_always-field
 release_always = false
+# mark pre-release versions (e.g. 0.3.0-rc.1) as GitHub pre-releases
+# https://release-plz.dev/docs/config#the-git_release_type-field
+git_release_type = "auto"
