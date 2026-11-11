@@ -20,6 +20,14 @@ use crate::maybestd::vec::Vec;
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Proof<M: MerkleHash> {
     /// The siblings to be used to build the path to the root.
+    // The derived bound would require the hasher itself to implement borsh
+    #[cfg_attr(
+        feature = "borsh",
+        borsh(bound(
+            serialize = "M::Output: borsh::BorshSerialize",
+            deserialize = "M::Output: borsh::BorshDeserialize"
+        ))
+    )]
     pub siblings: Vec<M::Output>,
     /// The range of indices covered by the proof.
     pub range: Range<u32>,

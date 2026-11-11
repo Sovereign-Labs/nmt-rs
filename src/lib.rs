@@ -739,6 +739,23 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_range_proof_narrowing_is_logarithmic_in_claimed_range() {
+        use crate::simple_merkle::proof::Proof;
+        use crate::TmSha2Hasher;
+
+        // Found by fuzzing: narrowing used to visit every leaf of the claimed range, which
+        // took minutes for a proof claiming 2^32 leaves
+        let proof = Proof::<TmSha2Hasher> {
+            siblings: Vec::new(),
+            range: 0..u32::MAX,
+        };
+        let narrowed = proof
+            .narrow_range_with_hasher(&[], &[], TmSha2Hasher::new())
+            .unwrap();
+        assert!(narrowed.siblings.is_empty());
+    }
+
     fn test_completeness_check_impl<const NS_ID_SIZE: usize>() {
         // Build a tree with 32 leaves spread evenly across 8 namespaces
         let mut tree = DefaultNmt::<NS_ID_SIZE>::new();
@@ -883,5 +900,35 @@ mod tests {
         fn is_sync<T: Sync>(_t: T) {}
 
         is_sync(DefaultNmt::<1>::new());
+    }
+
+    #[cfg(feature = "borsh")]
+    #[test]
+    fn test_proofs_borsh_roundtrip() {
+        use crate::simple_merkle::{proof::Proof, tree::MerkleTree};
+        use crate::TmSha2Hasher;
+
+        let mut tree = tree_from_namespace_ids::<8>([1, 2, 2, 4]);
+        let root = tree.root();
+        for namespace in [2, 3] {
+            let namespace = ns_id_from_u64(namespace);
+            let (leaves, proof) = tree.get_namespace_with_proof(namespace);
+            let bytes = borsh::to_vec(&proof).unwrap();
+            let decoded: NamespaceProof<NamespacedSha2Hasher<8>, 8> =
+                borsh::from_slice(&bytes).unwrap();
+            assert_eq!(decoded, proof);
+            decoded
+                .verify_complete_namespace(&root, &leaves, namespace)
+                .unwrap();
+        }
+
+        let mut tree = MerkleTree::<MemDb<[u8; 32]>, TmSha2Hasher>::new();
+        for leaf in [b"a", b"b", b"c"] {
+            tree.push_raw_leaf(leaf);
+        }
+        let proof = tree.build_range_proof(1..3);
+        let decoded: Proof<TmSha2Hasher> =
+            borsh::from_slice(&borsh::to_vec(&proof).unwrap()).unwrap();
+        assert_eq!(decoded, proof);
     }
 }
