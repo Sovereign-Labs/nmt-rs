@@ -40,3 +40,25 @@ pub fn compute_tree_size(
     }
     Ok(index_of_final_node + 1)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compute_tree_size() {
+        // A proof for the last leaf of a full tree has no right siblings
+        assert_eq!(compute_tree_size(0, 7), Ok(8));
+        // Leaf 4 of an 8 leaf tree has a single right sibling subtree, covering leaves 5..8
+        assert_eq!(compute_tree_size(2, 4), Ok(8));
+        assert_eq!(compute_tree_size(1, 4), Ok(6));
+    }
+
+    #[test]
+    fn test_compute_tree_size_rejects_more_than_u32_max_leaves() {
+        assert_eq!(
+            compute_tree_size(1, u32::MAX as usize - 1),
+            Err(RangeProofError::TreeTooLarge)
+        );
+    }
+}

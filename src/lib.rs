@@ -563,6 +563,138 @@ mod tests {
     }
 
     #[test]
+    fn test_absence_proof_rejected_for_other_namespaces() {
+        let mut tree = tree_from_namespace_ids::<8>(&[1, 2, 3, 4, 6, 7, 8, 9]);
+        let root = tree.root();
+        // A valid absence proof for namespace 5, built around the leaf of namespace 6
+        let proof = tree.get_namespace_proof(ns_id_from_u64(5));
+        let no_leaves: &[&[u8]] = &[];
+
+        // A present namespace preceding the leaf is caught by the rightmost left sibling
+        assert_eq!(
+            proof.verify_complete_namespace(&root, no_leaves, ns_id_from_u64(3)),
+            Err(RangeProofError::MalformedProof(
+                "proven namespace must be greater than the namespace of the rightmost left sibling"
+            ))
+        );
+        // The proof's leaf must have a namespace greater than the one being proven absent
+        for namespace in [6, 7] {
+            assert_eq!(
+                proof.verify_complete_namespace(&root, no_leaves, ns_id_from_u64(namespace)),
+                Err(RangeProofError::MalformedProof(
+                    "provided leaf must have namespace greater than the namespace which is being proven absent"
+                ))
+            );
+        }
+        // Namespaces outside the root's range must be proven absent by an empty proof
+        for namespace in [0, 10] {
+            assert_eq!(
+                proof.verify_complete_namespace(&root, no_leaves, ns_id_from_u64(namespace)),
+                Err(RangeProofError::MalformedProof(
+                    "absence proof for a namespace outside the root's range must be empty"
+                ))
+            );
+        }
+    }
+
+    #[test]
+    fn test_presence_proof_rejected_for_namespace_outside_root() {
+        let mut tree = tree_from_namespace_ids::<8>(&[1, 2, 3, 4]);
+        let root = tree.root();
+        let (leaves, proof) = tree.get_range_with_proof(0..1);
+
+        assert_eq!(
+            proof.verify_complete_namespace(&root, &leaves, ns_id_from_u64(5)),
+            Err(RangeProofError::TreeDoesNotContainLeaf)
+        );
+    }
+
+    #[test]
+    fn test_proof_with_unordered_sibling_namespaces_is_rejected() {
+        let mut tree = tree_from_namespace_ids::<8>(&[1, 2, 3, 4]);
+        let root = tree.root();
+        let (leaves, mut proof) = tree.get_range_with_proof(0..1);
+        let NamespaceProof::PresenceProof { proof: inner, .. } = &mut proof else {
+            unreachable!();
+        };
+        inner.siblings[0] =
+            NamespacedHash::with_min_and_max_ns(ns_id_from_u64(3), ns_id_from_u64(2));
+
+        assert_eq!(
+            proof.verify_complete_namespace(&root, &leaves, ns_id_from_u64(1)),
+            Err(RangeProofError::MalformedTree)
+        );
+    }
+
+    #[test]
+    fn test_absence_proof_cannot_be_used_as_range_proof() {
+        let mut tree = tree_from_namespace_ids::<8>(&[1, 2, 3, 4, 6, 7, 8, 9]);
+        let root = tree.root();
+        let namespace = ns_id_from_u64(5);
+        let proof = tree.get_namespace_proof(namespace);
+        let no_leaves: &[&[u8]] = &[];
+
+        assert_eq!(
+            proof.verify_range(&root, no_leaves, namespace),
+            Err(RangeProofError::MalformedProof(
+                "Cannot prove that a partial namespace is absent"
+            ))
+        );
+        assert_eq!(
+            proof.narrow_range(no_leaves, no_leaves, namespace),
+            Err(RangeProofError::MalformedProof(
+                "Cannot narrow the range of an absence proof"
+            ))
+        );
+
+        // Converting an absence proof again leaves it untouched
+        let mut converted = proof.clone();
+        converted.convert_to_absence_proof(tree.leaves()[0].hash().clone());
+        assert_eq!(converted, proof);
+    }
+
+    #[test]
+    fn test_namespace_proof_edge_siblings() {
+        let mut tree = tree_with_n_leaves::<8>(8);
+        let leaf_hash = |tree: &DefaultNmt<8>, i: usize| tree.leaves()[i].hash().clone();
+
+        let (_, first) = tree.get_range_with_proof(0..1);
+        assert_eq!(first.rightmost_left_sibling(), None);
+        assert_eq!(first.leftmost_right_sibling(), Some(&leaf_hash(&tree, 1)));
+
+        let (_, last) = tree.get_range_with_proof(7..8);
+        assert_eq!(last.rightmost_left_sibling(), Some(&leaf_hash(&tree, 6)));
+        assert_eq!(last.leftmost_right_sibling(), None);
+
+        let (_, all) = tree.get_range_with_proof(0..8);
+        assert_eq!(all.rightmost_left_sibling(), None);
+        assert_eq!(all.leftmost_right_sibling(), None);
+    }
+
+    #[test]
+    fn test_get_index_with_proof() {
+        let mut tree = tree_with_n_leaves::<8>(5);
+        let root = tree.root();
+        for idx in 0..5 {
+            let (data, proof) = tree.get_index_with_proof(idx);
+            assert_eq!(data, format!("leaf_{idx}").as_bytes());
+            let leaf_hash = tree.leaves()[idx].hash().clone();
+            assert_eq!(
+                tree.check_range_proof(&root, &[leaf_hash], proof.siblings(), idx),
+                Ok(RangeProofType::Complete)
+            );
+        }
+    }
+
+    #[test]
+    fn test_push_leaf_rejects_decreasing_namespace() {
+        let mut tree = tree_from_namespace_ids::<8>(&[1, 3]);
+        assert!(tree.push_leaf(b"leaf", ns_id_from_u64(2)).is_err());
+        assert!(tree.push_leaf(b"leaf", ns_id_from_u64(3)).is_ok());
+        assert_eq!(tree.leaves().len(), 3);
+    }
+
+    #[test]
     fn test_wrong_amount_of_leaves() {
         let mut tree = tree_from_namespace_ids::<8>(&[1, 2, 2, 2, 3, 4, 5, 6]);
         let namespace = ns_id_from_u64(2);
@@ -871,14 +1003,14 @@ mod tests {
         test_namespace_verification_impl::<32>();
     }
 
-    #[allow(unused)]
+    #[test]
     fn compilation_test_nmt_is_send() {
         fn is_send<T: Send>(_t: T) {}
 
         is_send(DefaultNmt::<1>::new());
     }
 
-    #[allow(unused)]
+    #[test]
     fn compilation_test_nmt_is_sync() {
         fn is_sync<T: Sync>(_t: T) {}
 

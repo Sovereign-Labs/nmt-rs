@@ -409,7 +409,12 @@ impl<const NS_ID_SIZE: usize> TryFrom<&[u8]> for NamespacedHash<NS_ID_SIZE> {
 
 #[cfg(test)]
 mod tests {
-    use crate::NamespacedHash;
+    use crate::simple_merkle::db::LeafWithHash;
+    use crate::simple_merkle::tree::MerkleHash;
+    use crate::{
+        InvalidNamespace, InvalidNamespacedHash, NamespaceId, NamespaceMerkleHasher,
+        NamespacedHash, NamespacedSha2Hasher,
+    };
     use borsh::de::BorshDeserialize;
 
     #[test]
@@ -450,5 +455,105 @@ mod tests {
             postcard::from_bytes(&serialized[..]).expect("serialized hash is correct");
 
         assert_eq!(got, hash);
+    }
+
+    // Port of Go's TestComputeNsRange:
+    // https://github.com/celestiaorg/nmt/blob/a94d705f3ec953f848cfcfb0cc048c0e690f00d8/hasher_test.go#L794-L899
+    #[test]
+    fn test_hash_nodes_namespace_range() {
+        const MAX: u8 = 0xff;
+        // (ignore_max_ns, left min, left max, right min, right max, expected min, expected max)
+        let cases = [
+            (true, MAX, MAX, MAX, MAX, MAX, MAX),
+            (true, 0x00, MAX, MAX, MAX, 0x00, MAX),
+            (true, 0x00, 0x01, MAX, MAX, 0x00, 0x01),
+            (true, 0x00, 0x01, 0x02, MAX, 0x00, MAX),
+            (true, 0x00, 0x01, 0x02, 0x03, 0x00, 0x03),
+            (false, MAX, MAX, MAX, MAX, MAX, MAX),
+            (false, 0x00, MAX, MAX, MAX, 0x00, MAX),
+            (false, 0x00, 0x01, MAX, MAX, 0x00, MAX),
+            (false, 0x00, 0x01, 0x02, MAX, 0x00, MAX),
+            (false, 0x00, 0x01, 0x02, 0x03, 0x00, 0x03),
+        ];
+        let node = |min: u8, max: u8| {
+            NamespacedHash::<1>::with_min_and_max_ns(NamespaceId([min]), NamespaceId([max]))
+        };
+
+        for (ignore_max_ns, l_min, l_max, r_min, r_max, min, max) in cases {
+            let hasher = NamespacedSha2Hasher::<1>::with_ignore_max_ns(ignore_max_ns);
+            let parent = hasher.hash_nodes(&node(l_min, l_max), &node(r_min, r_max));
+            assert_eq!(parent.min_namespace(), NamespaceId([min]));
+            assert_eq!(parent.max_namespace(), NamespaceId([max]));
+        }
+    }
+
+    #[test]
+    fn test_hash_leaf_reads_namespace_prefix() {
+        let namespace = NamespaceId([7u8; 8]);
+        let data = b"leaf data";
+        let prefixed = [namespace.as_ref(), data].concat();
+
+        for ignore_max_ns in [true, false] {
+            let hasher = NamespacedSha2Hasher::<8>::with_ignore_max_ns(ignore_max_ns);
+            let expected = hasher.hash_leaf_with_namespace(data, namespace);
+            assert_eq!(hasher.hash_leaf(&prefixed), expected);
+            assert_eq!(
+                LeafWithHash::<NamespacedSha2Hasher<8>>::new_with_namespace(
+                    data.to_vec(),
+                    namespace,
+                    ignore_max_ns
+                )
+                .hash(),
+                &expected
+            );
+        }
+        let leaf = LeafWithHash::<NamespacedSha2Hasher<8>>::new(prefixed.clone());
+        assert_eq!(leaf.data(), prefixed);
+        assert_eq!(
+            leaf.hash(),
+            &NamespacedSha2Hasher::<8>::default().hash_leaf_with_namespace(data, namespace)
+        );
+    }
+
+    #[test]
+    fn test_is_reserved_on_celestia() {
+        assert!(NamespaceId::<29>::default().is_reserved_on_celestia());
+        assert!(NamespaceId::<29>::MAX_RESERVED_ID_ON_CELESTIA.is_reserved_on_celestia());
+
+        let mut first_unreserved = NamespaceId::<29>::MAX_RESERVED_ID_ON_CELESTIA;
+        first_unreserved.0[27] = 1;
+        assert!(!first_unreserved.is_reserved_on_celestia());
+        assert!(!NamespaceId::<29>::max_id().is_reserved_on_celestia());
+    }
+
+    #[test]
+    fn test_try_from_rejects_wrong_length() {
+        for len in [7, 9] {
+            assert_eq!(
+                NamespaceId::<8>::try_from(&[0u8; 9][..len]),
+                Err(InvalidNamespace)
+            );
+        }
+        for len in [47, 49] {
+            assert_eq!(
+                NamespacedHash::<8>::try_from(&[0u8; 49][..len]),
+                Err(InvalidNamespacedHash)
+            );
+        }
+        assert_eq!(InvalidNamespace.to_string(), "InvalidNamespace");
+        assert_eq!(InvalidNamespacedHash.to_string(), "InvalidNamespacedHash");
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_namespaced_hash_serde_json_rejects_short_array() {
+        let short = serde_json::to_vec(&[8u8; 47][..]).unwrap();
+
+        let err = serde_json::from_slice::<NamespacedHash<8>>(&short).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("invalid length 47, expected an array of length 48"),
+            "{err}"
+        );
     }
 }
