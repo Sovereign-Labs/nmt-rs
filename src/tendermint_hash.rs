@@ -22,6 +22,8 @@ fn inner_hash(left: &[u8], right: &[u8]) -> [u8; 32] {
 }
 
 /// A sha256 hasher, compatible with [Tendermint merkle hash](https://github.com/informalsystems/tendermint-rs/blob/979456c9f33463944f97f7ea3900640e59f7ea6d/tendermint/src/merkle.rs)
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TmSha2Hasher;
 
 impl Default for TmSha2Hasher {
