@@ -64,6 +64,35 @@ jobs:
       - name: cargo hack
         run: cargo hack --feature-powerset check --locked
 
+  # Checks every feature combination on Cargo.toml's rust-version; cargo-hack installs that toolchain itself.
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: cargo install cargo-hack
+        uses: taiki-e/install-action@cargo-hack
+      # --lib: dev-dependencies (tendermint, criterion) are not bound by our MSRV.
+      - name: cargo hack msrv
+        run: cargo hack --rust-version --feature-powerset check --locked --lib
+
+  # Fails on broken intra-doc links and other rustdoc warnings before docs.rs sees them.
+  doc:
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -D warnings
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install toolchain from rust-toolchain.toml
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          cache: false
+      - name: cargo doc
+        run: cargo doc --no-deps --all-features --locked
+
   zepter:
     runs-on: ubuntu-latest
     steps:

@@ -705,9 +705,9 @@ where
     ///
     /// ```
     /// A proof of [H, I, J, K] will contain nodes [G, L, F]. If we want to turn that into a proof
-    /// of [J], that would need nodes [I, C, B].
+    /// of \[J\], that would need nodes [I, C, B].
     /// We recursively subdivide the total leaf range to find the subtrees that don't overlap the
-    /// final desired range, just as in the normal build_range_proof - in this case, [G, H], [I],
+    /// final desired range, just as in the normal build_range_proof - in this case, [G, H], \[I\],
     /// and [K, L, M, N]. We can then combine the information from the proof and the {left|right}_extra_leaves
     /// to calculate the subroots of each of those trees - for example, B = hash(E | F), where F is
     /// from the original proof, and E is calculated using K (from right_extra_leaves) and L (from
